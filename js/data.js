@@ -16,7 +16,7 @@
     ],
     ACHIEVEMENTS: [
       { id: 'reverse_cowboy', name: '反向黄牛',   desc: '二周目原价出票×10',              reward: '解锁结局「火锅好人」' },
-      { id: 'hand_speed',     name: '手速之光',   desc: '单次倒计时 0.1s 内点击',         reward: '称号：光速手指' },
+{ id: 'hand_speed',     name: '手速之光',   desc: '倒计时开始 0.1s 内点击',             reward: '称号：光速手指' },
       { id: 'what_for',       name: '图啥？',     desc: '倒号老头三连',                    reward: '专属称号：哲学黄牛' },
       { id: 'father_love',    name: '老父亲の爱', desc: '收集全 4 套系统皮肤',            reward: '免广告模式' },
       { id: 'sacrifice_100',  name: '第100号祭品', desc: '拒绝掌刀并公开真相',            reward: '结局成就「第99号·自由」' },

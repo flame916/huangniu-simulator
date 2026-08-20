@@ -80,6 +80,7 @@
       const rate = this.getTaskRate(run, taskId);
       const effectiveRate = Math.min(1, rate + timingScore * 0.4);
       const success = _rng() < effectiveRate;
+      const oldLevel = run.level;
       const baseGain = success ? 50 : 20;
       const consolation = success ? 0 : (run.failStreak + 1) * 5;
       const luckGain = baseGain + consolation;
@@ -91,8 +92,7 @@
         run.failStreak += 1;
         this.addLuck(run, luckGain);
       }
-      const newLevel = this.getLevel(run.luck);
-      return { success, luckGain, leveledUp: newLevel > run.level, newLevel };
+      return { success, luckGain, leveledUp: run.level > oldLevel, newLevel: run.level };
     },
 
     advanceProgress(run, taskId, n) {

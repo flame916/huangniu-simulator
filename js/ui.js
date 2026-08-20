@@ -253,8 +253,7 @@
         timerEl.textContent = `⏱ ${remaining}s`;
         if (remaining <= 0) {
           clearInterval(interval);
-          tapBtn.disabled = true;
-          tapBtn.textContent = '超时了……点我重新开始';
+          tapBtn.textContent = '⏱ 超时了，点我重新开始';
           tapBtn.onclick = () => startPurchase(node);
         }
       }, 1000);
@@ -283,44 +282,57 @@
     card.appendChild(barEl);
     const startBtn = el('button', 'btn', '开始抢购');
     card.appendChild(startBtn);
+    let running = false;
+    let t0 = 0;
+    let anim = null;
+    const TOTAL = 1200;
+    const resetBar = () => {
+      if (anim) clearInterval(anim);
+      anim = null;
+      running = false;
+      fill.style.width = '0%';
+      startBtn.textContent = '开始抢购';
+    };
     startBtn.onclick = () => {
-      startBtn.disabled = true;
-      startBtn.textContent = '抢！';
-      const total = 1200;
-      const t0 = Date.now();
-      const anim = setInterval(() => {
-        const p = (Date.now() - t0) / total;
-        fill.style.width = Math.min(100, p * 100) + '%';
-        if (p >= 1) { clearInterval(anim); fill.style.width = '100%'; }
-      }, 16);
-      startBtn.onclick = () => {
-        const tUsed = Date.now() - t0;
-        clearInterval(anim);
-        const timingScore = Math.max(0, 1 - tUsed / total);
-        const perfect = timingScore >= 0.999;
-        const res = G.rollPurchase(app.run, t.id, timingScore);
-        G.saveRun(app.run);
-        if (res.success) {
-          startBtn.textContent = '✓ 抢到了！';
-          const ach = G.checkAchievements(app.run, 'purchase', { perfect });
-          for (const aid of ach) unlockAchievement(aid);
-          if (res.leveledUp) showToast(`🎉 手速等级提升到 Lv.${res.newLevel}！`);
-          if (t.rewards.broadcast) showBroadcast('全服广播：林小韭，又抢到了！');
-          if (!isAdFree()) setTimeout(() => showToast('📢 ' + randAd()), 300);
-          setTimeout(() => { app.run.nodeId = node.onComplete; G.saveRun(app.run); render(); }, 900);
-        } else {
-          startBtn.disabled = false;
-          startBtn.textContent = '没抢到……再来一次';
-          if (!isAdFree()) setTimeout(() => showToast('📢 ' + randAd()), 300);
-          const endCheck = G.checkEnding(app.run);
-          if (endCheck === 'speedy') {
-            app.run.nodeId = 'END_SPEEDY';
-            G.saveRun(app.run);
-            render();
-            return;
-          }
+      if (!running) {
+        running = true;
+        startBtn.textContent = '抢！';
+        t0 = Date.now();
+        anim = setInterval(() => {
+          const p = (Date.now() - t0) / TOTAL;
+          fill.style.width = Math.min(100, p * 100) + '%';
+          if (p >= 1) { clearInterval(anim); anim = null; }
+        }, 16);
+        return;
+      }
+      const tUsed = Date.now() - t0;
+      if (anim) clearInterval(anim);
+      anim = null;
+      const timingScore = Math.max(0, 1 - tUsed / TOTAL);
+      const perfect = timingScore >= 0.9;
+      const res = G.rollPurchase(app.run, t.id, timingScore);
+      G.saveRun(app.run);
+      if (res.success) {
+        startBtn.disabled = true;
+        startBtn.textContent = '✓ 抢到了！';
+        const ach = G.checkAchievements(app.run, 'purchase', { perfect });
+        for (const aid of ach) unlockAchievement(aid);
+        if (res.leveledUp) showToast(`🎉 手速等级提升到 Lv.${res.newLevel}！`);
+        if (t.rewards.broadcast) showBroadcast('全服广播：林小韭，又抢到了！');
+        if (!isAdFree()) setTimeout(() => showToast('📢 ' + randAd()), 300);
+        setTimeout(() => { app.run.nodeId = node.onComplete; G.saveRun(app.run); render(); }, 900);
+      } else {
+        resetBar();
+        startBtn.textContent = '没抢到……再来一次';
+        if (!isAdFree()) setTimeout(() => showToast('📢 ' + randAd()), 300);
+        const endCheck = G.checkEnding(app.run);
+        if (endCheck === 'speedy') {
+          app.run.nodeId = 'END_SPEEDY';
+          G.saveRun(app.run);
+          render();
+          return;
         }
-      };
+      }
     };
   }
 
