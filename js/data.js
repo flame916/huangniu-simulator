@@ -1,0 +1,118 @@
+(function (global) {
+  const GameData = {
+    LEVELS: [
+      { luckReq: 0,       cap: 0.05, categories: ['restaurant'] },
+      { luckReq: 1000,    cap: 0.30, categories: ['restaurant'] },
+      { luckReq: 5000,    cap: 0.50, categories: ['collectible'] },
+      { luckReq: 20000,   cap: 0.80, categories: ['collectible', 'concert'] },
+      { luckReq: 80000,   cap: 0.95, categories: ['concert'] },
+      { luckReq: 999999,  cap: 1.00, categories: ['everything'] },
+    ],
+    SKINS: [
+      { id: 'gold',   name: '土金弹窗', unlockAt: 'chapter', chapter: 'prologue', theme: { bg: '#2d1b00', card: '#4a2e00', accent: '#ffd700', text: '#ffe9a8' } },
+      { id: 'neon',   name: '炫彩霓虹', unlockAt: 'chapter', chapter: 'ch2',      theme: { bg: '#0f0530', card: '#1b0f4a', accent: '#ff2ec4', text: '#e8d9ff' } },
+      { id: 'cosmic', name: '宇宙黑金', unlockAt: 'chapter', chapter: 'ch4',      theme: { bg: '#000000', card: '#0d0d1a', accent: '#d4af37', text: '#f5f5f5' } },
+      { id: 'hidden', name: '老父亲の爱', unlockAt: 'ending', ending: 'B',        theme: { bg: '#1f1235', card: '#2d1f4f', accent: '#ffb86c', text: '#fff3e0' } },
+    ],
+    ACHIEVEMENTS: [
+      { id: 'reverse_cowboy', name: '反向黄牛',   desc: '二周目原价出票×10',              reward: '解锁结局「火锅好人」' },
+      { id: 'hand_speed',     name: '手速之光',   desc: '单次倒计时 0.1s 内点击',         reward: '称号：光速手指' },
+      { id: 'what_for',       name: '图啥？',     desc: '倒号老头三连',                    reward: '专属称号：哲学黄牛' },
+      { id: 'father_love',    name: '老父亲の爱', desc: '收集全 4 套系统皮肤',            reward: '免广告模式' },
+      { id: 'sacrifice_100',  name: '第100号祭品', desc: '拒绝掌刀并公开真相',            reward: '结局成就「第99号·自由」' },
+    ],
+    ENDINGS: [
+      { id: 'A',      name: '掌刀人',       title: '欢迎上任，下一任祭品已经就位。', desc: '你取代小雨成为第100号圣手培养者。系统继续陪伴，排行榜 Lv.100 点亮。' },
+      { id: 'B',      name: '第99号·自由',  title: '全网曝光，管理局垮台。',         desc: '三个月后，你在火锅店外排队四十分钟，普通桌，吃得贼香。排行榜点亮又熄灭。' },
+      { id: 'hidden', name: '火锅好人',     title: '全程零溢价交易。',               desc: '系统隐藏语音响起：老父亲为你骄傲。' },
+      { id: 'speedy', name: '咸鱼',         title: '您连抢都懒得抢，告辞。',         desc: '序章连续失败 20 次，系统骂骂咧咧卸载了。' },
+    ],
+    SYSTEM_LINES: [
+      '今天～你抢了吗～',
+      '输不可怕，抢不到才可怕。',
+      '您这手速，是刚做完指甲吧？',
+      '别急，老父亲在下一单等你。',
+      '欧气这玩意儿，跟头发一样，会掉的。',
+      '抢到算你本事，抢不到算你命。',
+      '广告时间到——您的钱包准备好了吗？',
+    ],
+    ADS: [
+      '升级抢购圣手 PRO 版，仅需 998，可分期，上不封顶！',
+      '限时抢购：手速提升胶囊，包治手残！',
+      '恭喜您中奖！再抢十次即可兑换「火坑」体验券一张。',
+      '今日特惠：欧气充值卡，买一送一（送的是一张）。',
+    ],
+    TASKS: {
+      'T0-1': { id: 'T0-1', chapter: 'prologue', name: '抢到悬崖火锅号', goal: '0.3% 挑战中签', baseRate: 0.003, mode: 'timing', progressTarget: 1, rewards: { luck: 100 }, nextTask: 'T1-1' },
+      'T1-1': { id: 'T1-1', chapter: 'ch1', name: '抢普通桌', goal: '中签 1 次', baseRate: 0.05, mode: 'timing', progressTarget: 1, rewards: { level: 1 }, nextTask: 'T1-2' },
+      'T1-2': { id: 'T1-2', chapter: 'ch1', name: '抢 VIP 悬崖包间', goal: '中签 1 次', baseRate: 0.31, mode: 'timing', progressTarget: 1, rewards: { level: 3, unlock: 'flag:metXiaoyu' }, nextTask: 'T2-1' },
+      'T2-1': { id: 'T2-1', chapter: 'ch2', name: '抢泡泡玛特限定款', goal: '中签 1 次', baseRate: 0.50, mode: 'timing', progressTarget: 1, rewards: { luck: 2000 }, nextTask: 'T2-2' },
+      'T2-2': { id: 'T2-2', chapter: 'ch2', name: '连抢 7 家门店', goal: '扫货 7/7', baseRate: 0.99, mode: 'rapid', progressTarget: 7, rapidTaps: 7, rewards: { luck: 8000, money: 20000, unlock: 'flag:xianyu' }, nextTask: 'T3-1' },
+      'T3-1': { id: 'T3-1', chapter: 'ch3', name: '抢周炸炸演唱会票', goal: '100 张 VIP 连座', baseRate: 0.95, mode: 'rapid', progressTarget: 10, rapidTaps: 10, rewards: { level: 5, broadcast: true, money: 50000 }, nextTask: 'T3-2' },
+      'T3-2': { id: 'T3-2', chapter: 'ch3', name: '躲过曝光风暴', goal: '逃离追查', baseRate: 0, mode: 'timing', progressTarget: 1, rewards: { flag: 'survivedStorm' }, nextTask: 'T4-1' },
+      'T4-1': { id: 'T4-1', chapter: 'ch4', name: '抢全球终极盛典门票', goal: '唯一门票', baseRate: 1.0, mode: 'timing', progressTarget: 1, rewards: { broadcast: true }, nextTask: 'T4-2' },
+      'T4-2': { id: 'T4-2', chapter: 'ch4', name: '最终抉择', goal: 'A 掌刀 / B 公开真相', baseRate: 0, mode: 'timing', progressTarget: 1, rewards: {}, nextTask: null },
+    },
+    STORY: {
+      P0: { id: 'P0', type: 'dialogue', speaker: '旁白', text: '深夜，地铁末班车。林小韭盯着手机——山城老灶·悬崖火锅的预约界面，第三次抢号失败。屏幕常年碎裂，裂纹里正好卡着倒计时。', next: 'P1' },
+      P1: { id: 'P1', type: 'dialogue', speaker: '系统', text: '叮——检测到怨气值爆表。抢购圣手系统，竭诚为您服务。我是您的老父亲。今天～你抢了吗～', next: 'P2' },
+      P2: { id: 'P2', type: 'task', speaker: '系统', text: '来，给您上一课：全网就 3 个悬崖火锅号，全靠手速。开始抢购，越接近 0 秒按「抢！」越有戏。', taskId: 'T0-1', onComplete: 'P3' },
+      P3: { id: 'P3', type: 'dialogue', speaker: '系统', text: '抢到了！！0.3% 的概率！您就是天选之牛！看看周围，车厢里的人都在看您——狂喜是藏不住的。', next: 'P4' },
+      P4: { id: 'P4', type: 'choice', speaker: '倒号老头', text: '火锅店门口，一个老头凑过来：小伙子，号子卖不卖？你这号，抢它图啥？', choices: [
+        { id: 'sell', text: '卖给他，赚点外快', next: 'P5', effect: { oldManSale: 1, money: 80 } },
+        { id: 'keep', text: '不卖，我要请她吃火锅', next: 'P5', effect: { flag: 'keepTicket' } },
+      ] },
+      P5: { id: 'P5', type: 'dialogue', speaker: '系统', text: '顺便说一句——升级皮肤「土金弹窗」，原价 998，可分期，纯整活，不扣钱。您听听，这广告都真诚得不像话。', next: 'C1_0' },
+
+      C1_0: { id: 'C1_0', type: 'dialogue', speaker: '旁白', text: '次日，山城老灶·悬崖火锅。门口排到看不见尾，您攥着号，心里美滋滋。小雨——前台客服——对你笑了笑：先生，普通桌，请进。', next: 'C1_1' },
+      C1_1: { id: 'C1_1', type: 'task', speaker: '系统', text: '进店前还有个机会——普通桌随便坐，但 VIP 悬崖包间，得抢。先给您演示一下成功率机制：手速等级越高，成功率上限越高。开抢！', taskId: 'T1-1', onComplete: 'C1_2' },
+      C1_2: { id: 'C1_2', type: 'dialogue', speaker: '旁白', text: '落座。小雨端来锅底，聊了几句。你憋了半天，说出那句憋了三年的台词：其实……我只是想请你吃顿火锅。', next: 'C1_3' },
+      C1_3: { id: 'C1_3', type: 'task', speaker: '系统', text: '好样的，趁热打铁！VIP 悬崖包间，今晚还剩 1 间。抢！抢！抢！老父亲给你打气！', taskId: 'T1-2', onComplete: 'C1_4' },
+      C1_4: { id: 'C1_4', type: 'dialogue', speaker: '系统', text: '成了！我跟您说句掏心窝子的话——这票啊，其实早就给您预留好了。抢，不过是个仪式感。', next: 'C1_5' },
+      C1_5: { id: 'C1_5', type: 'choice', speaker: '倒号老头', text: '出门时老头又堵住您：V 号，VIP 包间，转给我，高价收。第二次了啊，小伙子。', choices: [
+        { id: 'sell2', text: '又卖了，香', next: 'C1_6', effect: { oldManSale: 1, money: 300 } },
+        { id: 'keep2', text: '不卖，这顿火锅必须请', next: 'C1_6' },
+      ] },
+      C1_6: { id: 'C1_6', type: 'dialogue', speaker: '系统', text: '第一课结业。恭喜您，正式入门。下一课：全城扫货。记住老父亲说的——稀缺，是可以被制造出来的。', next: 'C2_0' },
+
+      C2_0: { id: 'C2_0', type: 'dialogue', speaker: '旁白', text: '小雨朋友圈晒出一个隐藏款：限量 99 个的夜光鬼火。你决定，全城扫货给她凑一套。', next: 'C2_1' },
+      C2_1: { id: 'C2_1', type: 'dialogue', speaker: '夜排大哥', text: '泡泡玛特门口，夜排大哥拍拍你：兄弟，这排我罩的，管理费 50，扫码。生态，就是这么养起来的。', next: 'C2_2' },
+      C2_2: { id: 'C2_2', type: 'task', speaker: '系统', text: '第一店，限定款限量款，来，抢！50% 成功率，比火锅号稳多了。', taskId: 'T2-1', onComplete: 'C2_3' },
+      C2_3: { id: 'C2_3', type: 'dialogue', speaker: '系统', text: '欧气大礼包已到账！恭喜解锁「炫彩霓虹」皮肤，全屏霓虹，抢购时更有排面——要不要看看 998 分期套餐？', next: 'C2_4' },
+      C2_4: { id: 'C2_4', type: 'task', speaker: '系统', text: '还差 6 家店。连抢 7 家，凑齐隐藏款全家福。扫货开始——每店一个，双击屏幕快点！', taskId: 'T2-2', onComplete: 'C2_5' },
+      C2_5: { id: 'C2_5', type: 'dialogue', speaker: '系统', text: '7/7 集齐！挂闲鱼，秒出，银行卡数字开始膨胀。顺便——辞职吧，打工哪有抢购来钱快。', next: 'C2_6' },
+      C2_6: { id: 'C2_6', type: 'dialogue', speaker: '老板', text: '老板看着你的辞职信：去送外卖？你啊，就适合踏踏实实送外卖。你头也不回。', next: 'C2_7' },
+      C2_7: { id: 'C2_7', type: 'choice', speaker: '倒号老头', text: '老地方，老头第三次蹲你：隐藏款，收。小伙子，这已经是第三次了啊。', choices: [
+        { id: 'sell3', text: '卖！以后你就是我亲兄弟', next: 'C2_8', effect: { oldManSale: 1, money: 5000 } },
+        { id: 'keep3', text: '不卖，她喜欢', next: 'C2_8' },
+      ] },
+      C2_8: { id: 'C2_8', type: 'dialogue', speaker: '系统', text: '全城扫货结业。您已经是全职黄牛了。下一课，见见真正的同行。', next: 'C3_0' },
+
+      C3_0: { id: 'C3_0', type: 'dialogue', speaker: '旁白', text: '顶流周炸炸开演唱会，内场 VIP 一秒售罄。票务圈群聊里，一个叫「九哥」的发了条语音：这票，我说了算。', next: 'C3_1' },
+      C3_1: { id: 'C3_1', type: 'dialogue', speaker: '九哥', text: '九头鸟票务的老大，九哥，堵在你门口：小子，听说你手速了得？敢跟我抢 100 张 VIP 连座吗？', next: 'C3_2' },
+      C3_2: { id: 'C3_2', type: 'task', speaker: '系统', text: '正面 PK！100 张 VIP 连座，限时 10 秒，狂点屏幕！抢赢九哥，你就是圈里话事人！', taskId: 'T3-1', onComplete: 'C3_3' },
+      C3_3: { id: 'C3_3', type: 'dialogue', speaker: '系统', text: '100% 必中！！金光万丈，全服广播：恭喜「林小韭」抢下 100 张 VIP 连座！您的手速等级已达 MAX。', next: 'C3_4' },
+      C3_4: { id: 'C3_4', type: 'dialogue', speaker: '九哥', text: '九哥愣了三秒，随即大笑：兄弟，来我这儿干吧。这行当，主办方出票，平台放水，大牛拿货，散户接盘——你已经是最大那层的货了。', next: 'C3_5' },
+      C3_5: { id: 'C3_5', type: 'dialogue', speaker: '系统', text: '夜里，媒体突然曝光「倒票产业链」。风声鹤唳。系统第一次不是催你抢，而是催你跑：快跑！躲过这波曝光风暴！', next: 'C3_6' },
+      C3_6: { id: 'C3_6', type: 'task', speaker: '系统', text: '躲过曝光风暴——倒计时结束前别被抓到。抢！', taskId: 'T3-2', onComplete: 'C3_7' },
+      C3_7: { id: 'C3_7', type: 'dialogue', speaker: '旁白', text: '九哥替你顶了雷，落网。你躲进出租屋，手机里刷到九哥被捕的新闻，评论区一片叫好。你忽然发现：他，跟你一样，也是个棋子。', next: 'C3_8' },
+      C3_8: { id: 'C3_8', type: 'dialogue', speaker: '系统', text: '老父亲沉默了一会儿：……你，可能是第 99 个。我开个玩笑。你别当真。快，去抢最后一张票。', next: 'C4_0' },
+
+      C4_0: { id: 'C4_0', type: 'dialogue', speaker: '旁白', text: '全球终极盛典，全网唯一门票。票务圈炸了锅。系统却异常安静。', next: 'C4_1' },
+      C4_1: { id: 'C4_1', type: 'task', speaker: '系统', text: '终极一抢。100% 必中——老父亲从不让你输。演出开始。', taskId: 'T4-1', onComplete: 'C4_2' },
+      C4_2: { id: 'C4_2', type: 'dialogue', speaker: '系统', text: '金光！全服广播：林小韭，抢下全球终极盛典唯一门票，荣登黄牛最高荣誉典礼！', next: 'C4_3' },
+      C4_3: { id: 'C4_3', type: 'dialogue', speaker: '小雨', text: '典礼上，颁奖人摘下口罩——是小雨。她看着你，缓缓开口：林小韭，第 99 号祭品，欢迎来到万物之巅。', next: 'C4_4' },
+      C4_4: { id: 'C4_4', type: 'dialogue', speaker: '余安', text: '我本名余安，余年偷安。我哥是职业黄牛，被管理局养蛊，在巅峰那天被直播献祭，然后跳了楼。我做了三年证据，就等一个还有良心的祭品。你，是第 99 个。', next: 'C4_5' },
+      C4_5: { id: 'C4_5', type: 'choice', speaker: '系统', text: '抢购圣手系统，第 1 至 99 号人手一套，第 99 号之后随管理局退休。老父亲最后问你一句：孩子，这最后一手，你打算怎么抢？', choices: [
+        { id: 'A', text: '入局掌刀，接替小雨', next: 'END_A', effect: { ending: 'A' } },
+        { id: 'B', text: '公开真相，全网曝光', next: 'END_B', effect: { ending: 'B' } },
+      ] },
+      END_A:     { id: 'END_A', type: 'ending', ending: 'A', speaker: '系统', text: '你坐上掌刀人的位子。系统在耳边低语：欢迎上任，下一任祭品已经就位。' },
+      END_B:     { id: 'END_B', type: 'ending', ending: 'B', speaker: '旁白', text: '真相公开，全网沸腾，管理局垮台，系统永久消失。三个月后，你在火锅店外排队四十分钟，普通桌，吃得贼香。屏幕外的排行榜 Lv.100 点亮，又熄灭。' },
+      END_HIDDEN: { id: 'END_HIDDEN', type: 'ending', ending: 'hidden', speaker: '系统', text: '全程零溢价交易。您这一生，一张都没多赚过。老父亲，为您骄傲。' },
+      END_SPEEDY: { id: 'END_SPEEDY', type: 'ending', ending: 'speedy', speaker: '系统', text: '序章连抢 20 次全败。系统骂骂咧咧：您连抢都懒得抢，告辞。已卸载。' },
+    },
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = GameData;
+  else global.GameData = GameData;
+})(typeof window !== 'undefined' ? window : globalThis);
