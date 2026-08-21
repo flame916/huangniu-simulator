@@ -129,14 +129,21 @@
     const pct = Math.min(100, Math.round(app.run.luck / nextReq * 100));
     bar.appendChild(el('div', 'stat', `欧气 ${app.run.luck}`));
     bar.appendChild(el('div', 'stat', `手速 Lv.${app.run.level}`));
-    bar.appendChild(el('div', 'stat', `¥ ${app.run.money}`));
+    bar.appendChild(el('div', 'stat', `¥ ${app.run.money || 0}`));
+    const risk = app.run.risk || 0;
+    const zone = risk >= 85 ? 'risk-hell' : risk >= 60 ? 'risk-danger' : risk >= 30 ? 'risk-warn' : 'risk-safe';
+    bar.appendChild(el('div', 'stat ' + zone, `风控 ${risk}`));
+    const streak = app.run.streak || 0;
+    bar.appendChild(el('div', 'stat' + (streak > 1 ? ' hot' : ''), streak > 1 ? `🔥 连击x${streak}` : '连击 -'));
+    const s = app.run.staff || { night: 0, tech: 0, talk: 0, intel: 0 };
+    bar.appendChild(el('div', 'stat', `小弟 ${s.night + s.tech + s.talk + s.intel}`));
     const prog = el('div', 'luck-bar');
     const fill = el('div', 'luck-fill');
     fill.style.width = pct + '%';
     prog.appendChild(fill);
     bar.appendChild(prog);
     const task = D.TASKS[app.run.currentTask];
-    bar.appendChild(el('div', 'task-line', task ? `当前任务：${task.name}（${task.goal}）` : ''));
+    bar.appendChild(el('div', 'task-line', task ? `当前任务：${task.name}（${task.goal}）· 🎮 ${task.minigame || ''}` : ''));
     return bar;
   }
 
@@ -160,7 +167,9 @@
           card.appendChild(b);
         }
       } else if (node.type === 'task') {
-        const b = el('button', 'btn', '开始抢购');
+        const t = D.TASKS[node.taskId];
+        const label = t && t.mode === 'hire' ? '开始招人' : (t && t.mode === 'riskcheck') ? '开始风控结算' : '开始抢购';
+        const b = el('button', 'btn', label);
         b.onclick = () => { startPurchase(node); };
         card.appendChild(b);
       } else if (node.type === 'ending') {
@@ -195,6 +204,9 @@
     const wrap = el('div', 'ending-screen');
     wrap.appendChild(el('h2', 'ending-title', '结局 · ' + e.name));
     wrap.appendChild(el('p', 'ending-desc', e.desc));
+    if (app.run.ended === 'B' && app.run.flags.jiuLedger) {
+      wrap.appendChild(el('p', 'ending-desc ledger-note', '📎 你把九哥的账本交给了记者——管理局全产业链的证据链，齐了。'));
+    }
     if (app.run.ended === 'B') {
       const rank = el('div', 'rank-easter-egg', '排行榜 · 抢购圣手 Lv.100');
       wrap.appendChild(rank);
@@ -232,6 +244,114 @@
     app.el.appendChild(wrap);
   }
 
+  function sumStaff() {
+    const s = app.run.staff || { night: 0, tech: 0, talk: 0, intel: 0 };
+    return s.night + s.tech + s.talk + s.intel;
+  }
+
+  function renderHire(node, t, card) {
+    const types = [
+      { k: 'night', name: '夜排型', desc: '体力扛把子：抢购成功率 +3%' },
+      { k: 'tech', name: '技术型', desc: '设备大神：风控增长 -1' },
+      { k: 'talk', name: '嘴皮型', desc: '谈判专家：出货收益 +20%' },
+      { k: 'intel', name: '眼线型', desc: '情报贩子：刷新必出好货' },
+    ];
+    const info = el('div', 'rapid-info', `已招募 ${sumStaff()}/3`);
+    const grid = el('div', 'hire-grid');
+    card.appendChild(info);
+    card.appendChild(grid);
+    const refreshGrid = () => {
+      grid.innerHTML = '';
+      for (const tp of types) {
+        const hired = (app.run.staff[tp.k] || 0) > 0;
+        const c = el('button', 'btn hire-card' + (hired ? ' hired' : ''),
+          `${tp.name}小弟${hired ? ' ✔ 已入队' : ''}<br><span class="hire-desc">${tp.desc}</span>`);
+        c.disabled = hired;
+        c.onclick = () => {
+          app.run.staff[tp.k] = (app.run.staff[tp.k] || 0) + 1;
+          const res = G.advanceProgress(app.run, t.id, 1);
+          G.saveRun(app.run);
+          showToast(`🤝 招到${tp.name}小弟！`);
+          info.textContent = `已招募 ${sumStaff()}/3`;
+          refreshGrid();
+          if (res.taskCompleted) {
+            showToast('🏢 工作室开张！');
+            setTimeout(() => { app.run.nodeId = node.onComplete; G.saveRun(app.run); render(); }, 900);
+          }
+        };
+        grid.appendChild(c);
+      }
+    };
+    refreshGrid();
+  }
+
+  function renderRiskCheck(node, t, card) {
+    const risk = app.run.risk || 0;
+    card.appendChild(el('div', 'rapid-info', `当前风控值：${risk}（低于 60 全身而退，否则库存被冻结清算）`));
+    const resBtn = el('button', 'btn', '接受审查');
+    const out = el('div', 'rapid-info', '');
+    card.appendChild(resBtn);
+    card.appendChild(out);
+    resBtn.onclick = () => {
+      const r = G.resolveRiskCheck(app.run);
+      const comp = G.advanceProgress(app.run, t.id, 1);
+      G.saveRun(app.run);
+      resBtn.disabled = true;
+      out.textContent = r.safe ? '✓ 风控值低于阈值，全身而退！' : `✗ 触发强制审查，库存冻结损失 ¥${r.loss}`;
+      showToast(r.safe ? '😎 全身而退' : '💸 损失惨重……');
+      if (comp.banEvent) showToast(`⚠️ 封号危机！额外损失 ¥${comp.banEvent.loss}`);
+      setTimeout(() => { app.run.nodeId = node.onComplete; G.saveRun(app.run); render(); }, 1200);
+    };
+  }
+
+  function buildCaptcha(sec, onPass) {
+    sec.innerHTML = '';
+    const chars = '韭牛票抢码黄号手速';
+    const target = chars[Math.floor(Math.random() * chars.length)];
+    const pool = chars.split('').filter(c => c !== target);
+    const tiles = [];
+    for (let i = 0; i < 6; i++) tiles.push(i < 2 ? target : pool[Math.floor(Math.random() * pool.length)]);
+    for (let i = tiles.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [tiles[i], tiles[j]] = [tiles[j], tiles[i]];
+    }
+    sec.appendChild(el('div', 'captcha-inst',
+      `🤖 人机验证：请点击所有「${target}」字<br><span class="captcha-taunt">${D.CAPTCHA_LINES[Math.floor(Math.random() * D.CAPTCHA_LINES.length)]}</span>`));
+    const gridEl = el('div', 'captcha-grid');
+    sec.appendChild(gridEl);
+    let picked = 0;
+    let done = false;
+    const finish = (ok) => {
+      if (done) return;
+      done = true;
+      if (ok) {
+        sec.innerHTML = '';
+        sec.appendChild(el('div', 'captcha-inst', '✅ 验证通过，开抢！'));
+        onPass();
+      } else {
+        G.addRisk(app.run, 10);
+        G.saveRun(app.run);
+        showToast('❌ 验证失败！风控 +10');
+        buildCaptcha(sec, onPass);
+      }
+    };
+    for (const ch of tiles) {
+      const tile = el('button', 'captcha-tile', ch);
+      tile.onclick = () => {
+        if (done || tile.disabled) return;
+        if (ch === target) {
+          tile.disabled = true;
+          tile.classList.add('hit');
+          picked += 1;
+          if (picked === 2) finish(true);
+        } else {
+          finish(false);
+        }
+      };
+      gridEl.appendChild(tile);
+    }
+  }
+
   function startPurchase(node) {
     const t = D.TASKS[node.taskId];
     const card = $('.scene-card');
@@ -239,6 +359,21 @@
     card.appendChild(el('div', 'speaker', node.speaker));
     card.appendChild(el('p', 'scene-text', node.text));
     card.appendChild(el('div', 'sys-ticker', '🎵 ' + randSystemLine()));
+
+    if (t.mode === 'hire') return renderHire(node, t, card);
+    if (t.mode === 'riskcheck') return renderRiskCheck(node, t, card);
+
+    const needCaptcha = t.id === 'T1-2' || (app.run.risk || 0) >= 30;
+    if (needCaptcha) {
+      const sec = el('div', 'captcha-box');
+      card.appendChild(sec);
+      buildCaptcha(sec, () => buildControls(card, node, t));
+    } else {
+      buildControls(card, node, t);
+    }
+  }
+
+  function buildControls(card, node, t) {
 
     if (t.mode === 'rapid') {
       let remaining = 8;
@@ -266,7 +401,9 @@
           const ach = G.checkAchievements(app.run, 'purchase', {});
           for (const aid of ach) unlockAchievement(aid);
           if (t.rewards.broadcast) showBroadcast('全服广播：林小韭又又又抢到了！');
-          if (t.rewards.money) showToast(`💰 入账 ¥${t.rewards.money}`);
+          if (t.rewards.money) showToast(`💰 入账 ¥${Math.round(t.rewards.money * (1 + 0.2 * G.staffCount(app.run, 'talk')))}`);
+          if (res.rent) showToast(`🏠 月底房东来收租 ¥${res.rent}`);
+          if (res.banEvent) showToast(`⚠️ 封号危机！损失 ¥${res.banEvent.loss}`);
           showToast('✓ 扫货完成！');
           setTimeout(() => { app.run.nodeId = node.onComplete; G.saveRun(app.run); render(); }, 900);
         }
@@ -291,11 +428,12 @@
     card.appendChild(refreshRow);
     refreshBtn.onclick = () => {
       app.run.refreshUses += 1;
-      const roll = Math.random();
+      const intelGuaranteed = G.staffCount(app.run, 'intel') > 0;
+      const roll = intelGuaranteed ? 0 : Math.random();
       if (roll < 0.55) {
         const gain = 4 + Math.floor(Math.random() * 9);
         app.run.refreshBuff = Math.min(32, app.run.refreshBuff + gain);
-        showToast(`🔄 刷出新货源！成功率 +${gain}%`);
+        showToast(intelGuaranteed ? `👁️ 眼线情报到位！成功率 +${gain}%` : `🔄 刷出新货源！成功率 +${gain}%`);
       } else if (roll < 0.8) {
         showToast('货架空空……什么都没刷到');
       } else {
@@ -354,6 +492,9 @@
         for (const aid of ach) unlockAchievement(aid);
         if (t.id === 'T0-1' && app.g.runCount >= 2 && usesBefore >= 5) unlockAchievement('refresh_master');
         if (res.leveledUp) showToast(`🎉 手速等级提升到 Lv.${res.newLevel}！`);
+        if (res.streakBonus > 0) showToast(`🔥 连击x${app.run.streak}！额外欧气 +${res.streakBonus}`);
+        if (res.rent) showToast(`🏠 月底房东来收租 ¥${res.rent}`);
+        if (res.banEvent) showToast(`⚠️ 封号危机！损失 ¥${res.banEvent.loss}`);
         if (t.rewards.broadcast) showBroadcast('全服广播：林小韭，又抢到了！');
         if (!isAdFree()) setTimeout(() => showToast('📢 ' + randAd()), 300);
         setTimeout(() => { app.run.nodeId = node.onComplete; G.saveRun(app.run); render(); }, 900);

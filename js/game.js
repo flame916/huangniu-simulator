@@ -26,8 +26,20 @@
         luck: 0, level: 0, money: 0,
         currentTask: 'T0-1', taskProgress: 0,
         tasksCompleted: [], failStreak: 0, oldManSales: 0, reverseSales: 0,
+        risk: 0, streak: 0, staff: { night: 0, tech: 0, talk: 0, intel: 0 },
         skins: [], flags: {}, ended: null,
       };
+    },
+
+    staffCount(run, type) {
+      return (run.staff && run.staff[type]) || 0;
+    },
+
+    addRisk(run, amount) {
+      const tech = this.staffCount(run, 'tech');
+      const gain = Math.max(1, amount - tech);
+      run.risk = Math.min(100, Math.max(0, (run.risk || 0) + gain));
+      return gain;
     },
 
     getLevel(luck) {
@@ -78,36 +90,60 @@
       const t = D.TASKS[taskId];
       if (!t) return { success: false, luckGain: 0, leveledUp: false, newLevel: run.level };
       const rate = this.getTaskRate(run, taskId);
-      const effectiveRate = Math.min(1, rate + timingScore * 0.4 + (run.refreshBuff || 0));
+      const nightBonus = this.staffCount(run, 'night') * 0.03;
+      const effectiveRate = Math.min(1, rate + timingScore * 0.4 + (run.refreshBuff || 0) + nightBonus);
       const success = _rng() < effectiveRate;
       const oldLevel = run.level;
       const baseGain = success ? 50 : 20;
       const consolation = success ? 0 : (run.failStreak + 1) * 5;
-      const luckGain = baseGain + consolation;
       if (success) {
         run.failStreak = 0;
-        this.addLuck(run, luckGain);
-        this.advanceProgress(run, taskId, 1);
+        run.streak = (run.streak || 0) + 1;
       } else {
         run.failStreak += 1;
+        run.streak = 0;
+      }
+      const streakBonus = success ? Math.min(run.streak, 5) * 10 : 0;
+      const luckGain = baseGain + consolation + streakBonus;
+      this.addRisk(run, success ? 4 : 2);
+      let ap = { taskCompleted: false, rewards: {}, rent: 0, banEvent: null };
+      if (success) {
+        this.addLuck(run, luckGain);
+        ap = this.advanceProgress(run, taskId, 1);
+      } else {
         this.addLuck(run, luckGain);
       }
-      return { success, luckGain, leveledUp: run.level > oldLevel, newLevel: run.level };
+      return { success, luckGain, streakBonus, leveledUp: run.level > oldLevel, newLevel: run.level, rent: ap.rent || 0, banEvent: ap.banEvent || null };
     },
 
     advanceProgress(run, taskId, n) {
       const t = D.TASKS[taskId];
       if (!t) return { taskCompleted: false, rewards: {} };
-      if (taskId === run.currentTask) run.taskProgress += n;
+      if (taskId === run.currentTask) {
+        run.taskProgress += n;
+        if (t.mode === 'rapid') this.addRisk(run, 2);
+      }
       if (run.taskProgress < t.progressTarget) return { taskCompleted: false, rewards: {} };
       return this.completeTask(run, taskId);
+    },
+
+    resolveRiskCheck(run) {
+      const risk = run.risk || 0;
+      if (risk < 60) return { safe: true, loss: 0, risk };
+      const loss = Math.min(run.money || 0, 5000 + risk * 100);
+      run.money = (run.money || 0) - loss;
+      run.risk = Math.max(0, risk - 30);
+      return { safe: false, loss, risk };
     },
 
     completeTask(run, taskId) {
       const t = D.TASKS[taskId];
       const rw = t.rewards || {};
       if (rw.luck) this.addLuck(run, rw.luck);
-      if (rw.money) run.money += rw.money;
+      if (rw.money) {
+        const talkMul = 1 + 0.2 * this.staffCount(run, 'talk');
+        run.money += Math.round(rw.money * talkMul);
+      }
       if (rw.level && rw.level > run.level) {
         run.level = rw.level;
         const need = LEVELS[rw.level].luckReq;
@@ -119,13 +155,26 @@
       if (!run.tasksCompleted.includes(taskId)) run.tasksCompleted.push(taskId);
       run.refreshBuff = 0;
       run.refreshUses = 0;
+      let rent = 0;
+      let banEvent = null;
       if (t.nextTask) {
         run.currentTask = t.nextTask;
         run.taskProgress = 0;
         const next = D.TASKS[t.nextTask];
-        if (next && next.chapter !== run.chapter) run.chapter = next.chapter;
+        if (next && next.chapter !== run.chapter) {
+          run.chapter = next.chapter;
+          rent = 2000;
+          run.money = Math.max(0, (run.money || 0) - rent);
+        }
       }
-      return { taskCompleted: true, rewards: rw };
+      if ((run.risk || 0) >= 60 && _rng() < 0.4) {
+        const loss = Math.ceil((run.money || 0) * 0.2);
+        if (loss > 0) {
+          run.money -= loss;
+          banEvent = { loss };
+        }
+      }
+      return { taskCompleted: true, rewards: rw, rent, banEvent };
     },
 
     applyChoice(run, choiceId) {
@@ -134,6 +183,7 @@
       if (!choice) return { nextNode: run.nodeId };
       const eff = choice.effect || {};
       if (eff.money) run.money += eff.money;
+      if (eff.risk) this.addRisk(run, eff.risk);
       if (eff.oldManSale) {
         run.oldManSales += eff.oldManSale;
         this.checkAchievements(run, 'oldManSale', {});
