@@ -75,7 +75,17 @@
     loadRun() {
       const raw = getStorage().getItem('hn_run');
       if (!raw) return null;
-      try { return JSON.parse(raw); } catch (e) { return null; }
+      try { return this.migrateRun(JSON.parse(raw)); } catch (e) { return null; }
+    },
+    migrateRun(run) {
+      if (!run || typeof run !== 'object') return run;
+      const fresh = this.createRun();
+      for (const k of Object.keys(fresh)) {
+        if (run[k] === undefined) run[k] = fresh[k];
+      }
+      if (!run.staff || typeof run.staff !== 'object') run.staff = { night: 0, tech: 0, talk: 0, intel: 0 };
+      if (!Array.isArray(run.inventory)) run.inventory = [];
+      return run;
     },
     saveGlobal(g) { getStorage().setItem('hn_global', JSON.stringify(g)); },
     loadGlobal() {
@@ -233,6 +243,10 @@
       const eff = choice.effect || {};
       if (eff.money) run.money += eff.money;
       if (eff.risk) this.addRisk(run, eff.risk);
+      if (eff.setTask && D.TASKS[eff.setTask]) {
+        run.currentTask = eff.setTask;
+        run.taskProgress = 0;
+      }
       if (eff.oldManSale) {
         run.oldManSales += eff.oldManSale;
         this.checkAchievements(run, 'oldManSale', {});

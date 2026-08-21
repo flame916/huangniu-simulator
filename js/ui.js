@@ -121,6 +121,7 @@
     app.run.school = null;
     app.wave = null;
     app.screen = 'endless';
+    G.saveRun(app.run);
     render();
   }
 
@@ -270,7 +271,12 @@
       btnContinue.onclick = () => {
         app.g = loadOrCreateGlobal();
         app.run = G.loadRun();
-        app.screen = 'game';
+        if (app.run && app.run.endless) {
+          app.screen = 'endless';
+          app.wave = null;
+        } else {
+          app.screen = 'game';
+        }
         render();
       };
       h.appendChild(btnContinue);

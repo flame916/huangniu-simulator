@@ -128,8 +128,8 @@
 
       CY_0: { id: 'CY_0', type: 'dialogue', speaker: '旁白', text: '春运，人类最大规模的迁徙。抢票软件全线崩溃，12306 变成玄学。车站广场上，拖着蛇皮袋的打工人排成长龙——他们不会用加速包，只知道天不亮就来排队。', next: 'CY_1' },
       CY_1: { id: 'CY_1', type: 'choice', speaker: '系统', text: '老父亲罕见地没有催您：孩子，这单我不分成。良心线黑心线，您自己挑。', choices: [
-        { id: 'goodLine', text: '帮打工人原价抢票（良心线：无收益，良心值+30）', next: 'CY_G0', effect: { flag: 'chunyunGood' } },
-        { id: 'badLine', text: '高价倒卖回家票（黑心线：+¥30000，良心值-30）', next: 'CY_B0' },
+        { id: 'goodLine', text: '帮打工人原价抢票（良心线：无收益，良心值+30）', next: 'CY_G0', effect: { flag: 'chunyunGood', setTask: 'CYG' } },
+        { id: 'badLine', text: '高价倒卖回家票（黑心线：+¥30000，良心值-30）', next: 'CY_B0', effect: { setTask: 'CYB' } },
       ] },
       CY_G0: { id: 'CY_G0', type: 'task', speaker: '旁白', text: '第一位：工地老张，三年没回家了。原价，一张。开抢！', taskId: 'CYG', onComplete: 'CY_2' },
       CY_B0: { id: 'CY_B0', type: 'task', speaker: '系统', text: '回家的票，愁的是人，值钱的是票。加价三倍起，开抢！', taskId: 'CYB', onComplete: 'CY_2' },
