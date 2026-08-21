@@ -161,9 +161,6 @@
       let ap = { taskCompleted: false, rewards: {}, rent: 0, banEvent: null };
       if (success) {
         this.addLuck(run, luckGain);
-        if (t.loot && !run.endless) {
-          run.inventory.push({ name: t.loot.name, base: t.loot.base, held: 0 });
-        }
         ap = this.advanceProgress(run, taskId, 1);
       } else {
         this.addLuck(run, luckGain);
@@ -208,7 +205,11 @@
         run.flags[rw.unlock.slice(5)] = true;
       }
       if (rw.conscience) run.conscience = (run.conscience || 0) + rw.conscience;
-      if (!run.tasksCompleted.includes(taskId)) run.tasksCompleted.push(taskId);
+      const firstTime = !run.tasksCompleted.includes(taskId);
+      if (firstTime) run.tasksCompleted.push(taskId);
+      if (t.loot && !run.endless && firstTime) {
+        run.inventory.push({ name: t.loot.name, base: t.loot.base, held: 0 });
+      }
       run.refreshBuff = 0;
       run.refreshUses = 0;
       run.boughtBuff = 0;
