@@ -27,9 +27,14 @@
         currentTask: 'T0-1', taskProgress: 0,
         tasksCompleted: [], failStreak: 0, oldManSales: 0, reverseSales: 0,
         risk: 0, streak: 0, staff: { night: 0, tech: 0, talk: 0, intel: 0 },
+        school: null, inventory: [], marketIdx: 100, conscience: 0, boughtBuff: 0,
+        endless: false, score: 0, fails: 0,
         skins: [], flags: {}, ended: null,
       };
     },
+
+    timingTotal(run) { return run.school === 'hand' ? 1800 : 1200; },
+    perfectThreshold(run) { return run.school === 'hand' ? 450 : 350; },
 
     staffCount(run, type) {
       return (run.staff && run.staff[type]) || 0;
@@ -37,7 +42,8 @@
 
     addRisk(run, amount) {
       const tech = this.staffCount(run, 'tech');
-      const gain = Math.max(1, amount - tech);
+      const relief = (run.school === 'people' ? 1 : 0);
+      const gain = Math.max(1, amount - tech - relief);
       run.risk = Math.min(100, Math.max(0, (run.risk || 0) + gain));
       return gain;
     },
@@ -77,13 +83,48 @@
       if (!raw) return null;
       try { return JSON.parse(raw); } catch (e) { return null; }
     },
-    newRun(g) {
+    newRun(g, school) {
       g.runCount = (g.runCount || 0) + 1;
       g.reverseUnlocked = g.runCount >= 2;
       this.saveGlobal(g);
       const run = this.createRun();
+      run.school = school || null;
+      if (school === 'capital') run.money = 5000;
       run.flags.reverseUnlocked = g.reverseUnlocked;
       return run;
+    },
+
+    advanceMarket(run) {
+      const delta = Math.floor(_rng() * 21) - 8;
+      run.marketIdx = Math.min(130, Math.max(90, (run.marketIdx || 100) + delta));
+      for (const it of (run.inventory || [])) it.held += 1;
+      return run.marketIdx;
+    },
+
+    itemValue(run, item) {
+      return Math.round(item.base * (run.marketIdx / 100) * Math.pow(0.92, item.held || 0));
+    },
+
+    sellItem(run, index, channel) {
+      const item = run.inventory[index];
+      if (!item) return { ok: false, gain: 0 };
+      const value = this.itemValue(run, item);
+      const r = _rng();
+      let mult = 1;
+      let outcome = '';
+      if (channel === 'retail') {
+        if (r < 0.7) { mult = 1.35; outcome = '零售高价出手！'; }
+        else { mult = 0.95; outcome = '被砍了点价……'; }
+      } else if (channel === 'wholesale') {
+        mult = run.school === 'people' ? 0.9 : 0.85; outcome = '同行秒收，走量落袋。';
+      } else if (channel === 'vip') {
+        if (r < 0.85) { mult = 1.6; outcome = '大客户包圆，赚翻了！'; }
+        else { mult = 0; outcome = '遇到骗子，血本无归！'; }
+      }
+      const gain = Math.round(value * mult);
+      run.money = (run.money || 0) + gain;
+      run.inventory.splice(index, 1);
+      return { ok: true, gain, outcome, value };
     },
 
     rollPurchase(run, taskId, timingScore) {
@@ -91,7 +132,7 @@
       if (!t) return { success: false, luckGain: 0, leveledUp: false, newLevel: run.level };
       const rate = this.getTaskRate(run, taskId);
       const nightBonus = this.staffCount(run, 'night') * 0.03;
-      const effectiveRate = Math.min(1, rate + timingScore * 0.4 + (run.refreshBuff || 0) + nightBonus);
+      const effectiveRate = Math.min(1, rate + timingScore * 0.4 + (run.refreshBuff || 0) + nightBonus + (run.boughtBuff || 0));
       const success = _rng() < effectiveRate;
       const oldLevel = run.level;
       const baseGain = success ? 50 : 20;
@@ -103,12 +144,16 @@
         run.failStreak += 1;
         run.streak = 0;
       }
-      const streakBonus = success ? Math.min(run.streak, 5) * 10 : 0;
+      const streakMul = run.school === 'hand' ? 2 : 1;
+      const streakBonus = success ? Math.min(run.streak, 5) * 10 * streakMul : 0;
       const luckGain = baseGain + consolation + streakBonus;
       this.addRisk(run, success ? 4 : 2);
       let ap = { taskCompleted: false, rewards: {}, rent: 0, banEvent: null };
       if (success) {
         this.addLuck(run, luckGain);
+        if (t.loot && !run.endless) {
+          run.inventory.push({ name: t.loot.name, base: t.loot.base, held: 0 });
+        }
         ap = this.advanceProgress(run, taskId, 1);
       } else {
         this.addLuck(run, luckGain);
@@ -152,9 +197,12 @@
       if (rw.unlock && typeof rw.unlock === 'string' && rw.unlock.startsWith('flag:')) {
         run.flags[rw.unlock.slice(5)] = true;
       }
+      if (rw.conscience) run.conscience = (run.conscience || 0) + rw.conscience;
       if (!run.tasksCompleted.includes(taskId)) run.tasksCompleted.push(taskId);
       run.refreshBuff = 0;
       run.refreshUses = 0;
+      run.boughtBuff = 0;
+      this.advanceMarket(run);
       let rent = 0;
       let banEvent = null;
       if (t.nextTask) {
@@ -163,11 +211,12 @@
         const next = D.TASKS[t.nextTask];
         if (next && next.chapter !== run.chapter) {
           run.chapter = next.chapter;
-          rent = 2000;
+          rent = run.school === 'capital' ? 1000 : 2000;
           run.money = Math.max(0, (run.money || 0) - rent);
         }
       }
-      if ((run.risk || 0) >= 60 && _rng() < 0.4) {
+      const banChance = run.school === 'people' ? 0.2 : 0.4;
+      if ((run.risk || 0) >= 60 && _rng() < banChance) {
         const loss = Math.ceil((run.money || 0) * 0.2);
         if (loss > 0) {
           run.money -= loss;
@@ -230,10 +279,49 @@
         if (!g.achievements.includes('reverse_cowboy')) g.achievements.push('reverse_cowboy');
       }
       if (g.skinsOwned.length >= 4 && !g.achievements.includes('father_love')) g.achievements.push('father_love');
+      if ((run.conscience || 0) >= 20 && !g.achievements.includes('clearheaded')) g.achievements.push('clearheaded');
+      if (!g.endlessUnlocked) { g.endlessUnlocked = true; this.saveGlobal(g); }
       this.saveGlobal(g);
       run.ended = endingId;
       this.saveRun(run);
       return endingId;
+    },
+
+    recordEndless(g, score) {
+      if (!Array.isArray(g.endlessBest)) g.endlessBest = [];
+      g.endlessBest.push({ score, date: new Date().toISOString().slice(0, 10) });
+      g.endlessBest.sort((a, b) => b.score - a.score);
+      g.endlessBest = g.endlessBest.slice(0, 5);
+      this.saveGlobal(g);
+      return g.endlessBest;
+    },
+
+    endlessWave(run) {
+      const wave = Math.floor((run.score || 0) / 3000) + 1;
+      const types = ['timing', 'rapid', 'captcha'];
+      const type = types[Math.floor(_rng() * types.length)];
+      return {
+        wave,
+        type,
+        name: `第 ${wave} 单 · ${type === 'timing' ? '秒杀时刻' : type === 'rapid' ? '扫货急件' : '人机之战'}`,
+        base: 800 + wave * 400,
+        taps: 5,
+        rate: Math.min(0.9, 0.35 + wave * 0.05),
+      };
+    },
+
+    endlessSuccess(run, profit) {
+      run.score = (run.score || 0) + profit;
+      run.money = (run.money || 0) + profit;
+      this.addRisk(run, 6);
+      return run.score;
+    },
+
+    endlessFail(run) {
+      run.fails = (run.fails || 0) + 1;
+      run.streak = 0;
+      this.addRisk(run, 3);
+      return run.fails >= 3 || (run.money || 0) < 0;
     },
   };
 

@@ -26,6 +26,7 @@
       prologue: '序章 · 韭菜的觉醒',
       ch1: '第一章 · 山城老灶的VIP包间',
       ch2: '第二章 · 泡泡玛特与隐藏款',
+      chunyun: '春运特别篇 · 回家过年的票',
       ch3: '第三章 · 顶流演唱会与100%必中',
       ch4: '第四章 · 万物之巅 · 系统真相',
     };
@@ -90,6 +91,167 @@
     if (a) showToast('🏆 成就解锁：' + a.name);
   }
 
+  function renderSchool() {
+    app.el.innerHTML = '';
+    const wrap = el('div', 'school-screen');
+    wrap.appendChild(el('h2', 'screen-h', '选择你的流派'));
+    wrap.appendChild(el('p', 'title-sub', '系统：老父亲按您的天赋，定制了抢购圣手方案——'));
+    for (const s of D.SCHOOLS) {
+      const c = el('button', 'btn school-card',
+        `<b>${s.name}</b><br><span class="hire-desc">${s.desc}</span><br><span class="school-tag">适合：${s.tag}</span>`);
+      c.onclick = () => {
+        app.run = G.newRun(app.g, s.id);
+        app.screen = 'game';
+        G.saveRun(app.run);
+        render();
+      };
+      wrap.appendChild(c);
+    }
+    const back = el('button', 'btn btn-sm', '返回');
+    back.onclick = () => { app.screen = 'title'; render(); };
+    wrap.appendChild(back);
+    app.el.appendChild(wrap);
+  }
+
+  function startEndless() {
+    app.g = loadOrCreateGlobal();
+    app.run = G.createRun();
+    app.run.endless = true;
+    app.run.risk = 60;
+    app.run.school = null;
+    app.wave = null;
+    app.screen = 'endless';
+    render();
+  }
+
+  function renderEndless() {
+    app.el.innerHTML = '';
+    const run = app.run;
+    const wrap = el('div', 'game-wrap');
+    wrap.appendChild(el('div', 'chapter-banner', `♾️ 无尽试炼 · 风控永久高压`));
+    const card = el('div', 'scene-card');
+    if (run.ended === 'endless_over') {
+      card.appendChild(el('h2', 'ending-title', `挑战结束 · ${run.score} 分`));
+      card.appendChild(el('p', 'scene-text', run.fails >= 3 ? '连续三单失手，同行把你拉黑了。' : '资金断裂，手机军团解散。'));
+      const best = (app.g && app.g.endlessBest) || [];
+      for (const [i, b] of best.entries()) {
+        card.appendChild(el('div', 'ach-item' + (b.score === run.score ? ' unlocked' : ' locked'), `#${i + 1} · ${b.score} 分（${b.date}）`));
+      }
+      const back = el('button', 'btn', '回到标题');
+      back.onclick = () => { app.screen = 'title'; render(); };
+      card.appendChild(back);
+    } else if (!app.wave) {
+      card.appendChild(el('div', 'speaker', '系统'));
+      card.appendChild(el('p', 'scene-text', '无尽模式：风控只涨不降，接单全凭本事。每单成功得利润，失败三次或破产即终。'));
+      const b = el('button', 'btn', '开始接单');
+      b.onclick = () => { app.wave = G.endlessWave(run); render(); };
+      card.appendChild(b);
+    } else {
+      const w = app.wave;
+      card.appendChild(el('div', 'speaker', w.name));
+      card.appendChild(el('p', 'rapid-info', `分数 ${run.score} · 资金 ¥${run.money || 0} · 风控 ${run.risk} · 失败 ${run.fails}/3`));
+      if (w.type === 'timing') {
+        const barEl = el('div', 'timing-bar');
+        const fill = el('div', 'timing-fill');
+        fill.style.width = '0%';
+        barEl.appendChild(fill);
+        card.appendChild(barEl);
+        const btn = el('button', 'btn', '开始');
+        card.appendChild(btn);
+        let t0 = 0, anim = null, running = false;
+        const TOTAL = 1200;
+        btn.onclick = () => {
+          if (!running) {
+            running = true; t0 = Date.now();
+            anim = setInterval(() => {
+              const left = TOTAL - (Date.now() - t0);
+              if (left <= 0) { clearInterval(anim); anim = null; fill.style.width = '100%'; btn.textContent = '⏱ 0.0s'; return; }
+              fill.style.width = ((TOTAL - left) / TOTAL * 100) + '%';
+              btn.textContent = `⏱ ${(left / 1000).toFixed(1)}s`;
+            }, 50);
+            return;
+          }
+          clearInterval(anim);
+          const eff = Date.now() - t0 + 60 + Math.floor(Math.random() * 201);
+          finishWave(Math.max(0, 1 - eff / TOTAL) > 0.25);
+        };
+      } else if (w.type === 'rapid') {
+        const info = el('div', 'rapid-info', `狂点 5 次！进度 0/5`);
+        const tapBtn = el('button', 'btn tap-btn', '🖱️ 抢！');
+        card.appendChild(info);
+        card.appendChild(tapBtn);
+        let n = 0;
+        tapBtn.onclick = () => {
+          n += 1;
+          info.textContent = `狂点 5 次！进度 ${n}/5`;
+          if (n >= 5) finishWave(true);
+        };
+      } else {
+        const sec = el('div', 'captcha-box');
+        card.appendChild(sec);
+        buildCaptcha(sec, () => finishWave(true));
+      }
+    }
+    wrap.appendChild(card);
+    app.el.appendChild(wrap);
+
+    function finishWave(ok) {
+      const r = app.run;
+      if (ok) {
+        const profit = Math.round(app.wave.base * (0.8 + Math.random() * 0.4));
+        G.endlessSuccess(r, profit);
+        showToast(`✓ 得手！利润 +¥${profit}`);
+      } else {
+        const over = G.endlessFail(r);
+        showToast('✗ 这单砸了……');
+        if (over) {
+          r.ended = 'endless_over';
+          G.recordEndless(app.g, r.score || 0);
+          G.saveRun(r);
+          app.wave = null;
+          render();
+          return;
+        }
+      }
+      G.saveRun(r);
+      app.wave = null;
+      setTimeout(render, 600);
+    }
+  }
+
+  function renderMarket() {
+    app.el.innerHTML = '';
+    const run = app.run;
+    const wrap = el('div', 'market-screen');
+    wrap.appendChild(el('h2', 'screen-h', `📦 行情 · 指数 ${run.marketIdx}`));
+    wrap.appendChild(el('p', 'title-sub', run.marketIdx >= 110 ? '📈 行情火热，正是出货好时机' : run.marketIdx <= 95 ? '📉 行情低迷，建议再囤囤' : '➖ 行情平稳'));
+    if (!run.inventory.length) {
+      wrap.appendChild(el('p', 'compliance-text', '货架空空，先去抢点货。'));
+    }
+    run.inventory.forEach((it, i) => {
+      const val = G.itemValue(run, it);
+      const row = el('div', 'ach-item market-item',
+        `<b>${it.name}</b>（成本 ¥${it.base}${it.held ? ` · 已持有 ${it.held} 单` : ''}）<br>现价 <b class="risk-warn">¥${val}</b>`);
+      const chRow = el('div', 'refresh-row');
+      for (const [ch, label] of [['retail', '🏪 散户零售'], ['wholesale', '🏭 同行批发'], ['vip', '💼 大客户包圆']]) {
+        const b = el('button', 'btn btn-sm', label);
+        b.onclick = () => {
+          const r = G.sellItem(run, i, ch);
+          G.saveRun(run);
+          if (r.ok) showToast(`${r.outcome} ${r.gain > 0 ? '+' : ''}¥${r.gain}`);
+          render();
+        };
+        chRow.appendChild(b);
+      }
+      row.appendChild(chRow);
+      wrap.appendChild(row);
+    });
+    const back = el('button', 'btn', '返回抢购');
+    back.onclick = () => { app.screen = 'game'; render(); };
+    wrap.appendChild(back);
+    app.el.appendChild(wrap);
+  }
+
   function renderTitle() {
     const hasRun = !!G.loadRun();
     app.el.innerHTML = '';
@@ -99,8 +261,7 @@
     const btnNew = el('button', 'btn', '新的人生');
     btnNew.onclick = () => {
       app.g = loadOrCreateGlobal();
-      app.run = G.newRun(app.g);
-      app.screen = 'game';
+      app.screen = 'school';
       render();
     };
     h.appendChild(btnNew);
@@ -113,6 +274,11 @@
         render();
       };
       h.appendChild(btnContinue);
+    }
+    if (app.g && app.g.endlessUnlocked) {
+      const btnEndless = el('button', 'btn', '♾️ 无尽试炼');
+      btnEndless.onclick = () => { startEndless(); };
+      h.appendChild(btnEndless);
     }
     const btnAchieve = el('button', 'btn', '成就');
     btnAchieve.onclick = () => { app.screen = 'achievements'; render(); };
@@ -152,6 +318,11 @@
     const wrap = el('div', 'game-wrap');
     const node = D.STORY[app.run.nodeId];
     wrap.appendChild(el('div', 'chapter-banner', chapterName(app.run.chapter)));
+    const topRow = el('div', 'refresh-row');
+    const mBtn = el('button', 'btn btn-sm', `📦 行情${app.run.inventory.length ? '(' + app.run.inventory.length + ')' : ''}`);
+    mBtn.onclick = () => { app.screen = 'market'; render(); };
+    topRow.appendChild(mBtn);
+    wrap.appendChild(topRow);
     const card = el('div', 'scene-card');
     if (node) {
       card.appendChild(el('div', 'speaker', node.speaker || ''));
@@ -203,9 +374,18 @@
     const e = D.ENDINGS.find(x => x.id === app.run.ended) || D.ENDINGS[0];
     const wrap = el('div', 'ending-screen');
     wrap.appendChild(el('h2', 'ending-title', '结局 · ' + e.name));
+    const conscience = app.run.conscience || 0;
+    const titleTag = conscience >= 20 ? '称号：人间清醒 🕊️' : conscience <= -20 ? '称号：冷血操盘 🐍' : '称号：普通韭菜';
+    wrap.appendChild(el('p', 'title-sub', `良心值 ${conscience > 0 ? '+' : ''}${conscience} · ${titleTag}`));
     wrap.appendChild(el('p', 'ending-desc', e.desc));
     if (app.run.ended === 'B' && app.run.flags.jiuLedger) {
       wrap.appendChild(el('p', 'ending-desc ledger-note', '📎 你把九哥的账本交给了记者——管理局全产业链的证据链，齐了。'));
+    }
+    if (app.run.ended === 'B' && conscience >= 20) {
+      wrap.appendChild(el('p', 'ending-desc ledger-note', '🧧 排队时，一位拎着蛇皮袋的大叔认出了你——春运那年你帮他抢到过回家的票。他默默帮你买了单。'));
+    }
+    if (app.run.ended === 'B' && conscience <= -20) {
+      wrap.appendChild(el('p', 'ending-desc ledger-note', '🌫️ 火锅店里人声鼎沸，你一个人吃得很快，没有人拼桌。'));
     }
     if (app.run.ended === 'B') {
       const rank = el('div', 'rank-easter-egg', '排行榜 · 抢购圣手 Lv.100');
@@ -304,7 +484,7 @@
     };
   }
 
-  function buildCaptcha(sec, onPass) {
+  function buildCaptcha(sec, onPass, hint) {
     sec.innerHTML = '';
     const chars = '韭牛票抢码黄号手速';
     const target = chars[Math.floor(Math.random() * chars.length)];
@@ -332,11 +512,13 @@
         G.addRisk(app.run, 10);
         G.saveRun(app.run);
         showToast('❌ 验证失败！风控 +10');
-        buildCaptcha(sec, onPass);
+        buildCaptcha(sec, onPass, hint);
       }
     };
+    let hinted = false;
     for (const ch of tiles) {
-      const tile = el('button', 'captcha-tile', ch);
+      const tile = el('button', 'captcha-tile' + (hint && ch === target && !hinted ? ' hint' : ''), ch);
+      if (hint && ch === target && !hinted) hinted = true;
       tile.onclick = () => {
         if (done || tile.disabled) return;
         if (ch === target) {
@@ -367,7 +549,7 @@
     if (needCaptcha) {
       const sec = el('div', 'captcha-box');
       card.appendChild(sec);
-      buildCaptcha(sec, () => buildControls(card, node, t));
+      buildCaptcha(sec, () => buildControls(card, node, t), app.run.school === 'intel');
     } else {
       buildControls(card, node, t);
     }
@@ -422,13 +604,30 @@
     app.run.refreshUses = app.run.refreshUses || 0;
     const refreshRow = el('div', 'refresh-row');
     const refreshBtn = el('button', 'btn btn-sm', '🔄 刷新货源');
-    const buffLabel = el('span', 'buff-label', `成功率加成 +${app.run.refreshBuff}%`);
+    const buffLabel = el('span', 'buff-label', `成功率加成 +${app.run.refreshBuff + (app.run.boughtBuff || 0)}%`);
     refreshRow.appendChild(refreshBtn);
     refreshRow.appendChild(buffLabel);
     card.appendChild(refreshRow);
+    let plannedDelay = null;
+    if (app.run.school === 'intel') {
+      plannedDelay = 60 + Math.floor(Math.random() * 201);
+      refreshRow.appendChild(el('span', 'buff-label', `📡 预计网络延迟 ~${plannedDelay}ms`));
+    }
+    if (app.run.school === 'capital') {
+      const buyBtn = el('button', 'btn btn-sm', '💳 加钱插队 +10%（¥1000）');
+      buyBtn.onclick = () => {
+        if ((app.run.boughtBuff || 0) >= 30 || (app.run.money || 0) < 1000) return;
+        app.run.money -= 1000;
+        app.run.boughtBuff = (app.run.boughtBuff || 0) + 10;
+        G.saveRun(app.run);
+        buffLabel.textContent = `成功率加成 +${app.run.refreshBuff + app.run.boughtBuff}%`;
+        showToast('💳 黄牛加急通道开启！+10%');
+      };
+      refreshRow.appendChild(buyBtn);
+    }
+    const intelGuaranteed = app.run.school === 'intel' || G.staffCount(app.run, 'intel') > 0;
     refreshBtn.onclick = () => {
       app.run.refreshUses += 1;
-      const intelGuaranteed = G.staffCount(app.run, 'intel') > 0;
       const roll = intelGuaranteed ? 0 : Math.random();
       if (roll < 0.55) {
         const gain = 4 + Math.floor(Math.random() * 9);
@@ -439,7 +638,7 @@
       } else {
         showToast('📢 ' + randAd());
       }
-      buffLabel.textContent = `成功率加成 +${app.run.refreshBuff}%`;
+      buffLabel.textContent = `成功率加成 +${app.run.refreshBuff + (app.run.boughtBuff || 0)}%`;
       G.saveRun(app.run);
     };
 
@@ -448,7 +647,7 @@
     let running = false;
     let t0 = 0;
     let anim = null;
-    const TOTAL = 1200;
+    const TOTAL = G.timingTotal(app.run);
     const resetBar = () => {
       if (anim) clearInterval(anim);
       anim = null;
@@ -477,10 +676,10 @@
       const tUsed = Date.now() - t0;
       if (anim) clearInterval(anim);
       anim = null;
-      const netDelay = 60 + Math.floor(Math.random() * 201);
+      const netDelay = plannedDelay !== null ? plannedDelay : 60 + Math.floor(Math.random() * 201);
       const effUsed = tUsed + netDelay;
       const timingScore = Math.max(0, 1 - effUsed / TOTAL);
-      const perfect = effUsed <= 350;
+      const perfect = effUsed <= G.perfectThreshold(app.run);
       showToast(`🌐 网络延迟 ${netDelay}ms`);
       const usesBefore = app.run.refreshUses || 0;
       const res = G.rollPurchase(app.run, t.id, timingScore);
@@ -518,7 +717,10 @@
     syncSkins();
     applySkin();
     if (app.screen === 'title') return renderTitle();
+    if (app.screen === 'school') return renderSchool();
     if (app.screen === 'game') return renderGame();
+    if (app.screen === 'market') return renderMarket();
+    if (app.screen === 'endless') return renderEndless();
     if (app.screen === 'ending') return renderEnding();
     if (app.screen === 'achievements') return renderAchievements();
     if (app.screen === 'compliance') return renderCompliance();

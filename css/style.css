@@ -64,6 +64,11 @@ body { background: var(--bg); color: var(--text); font-family: "Microsoft YaHei"
 .hire-desc { font-size: 11px; opacity: .75; font-weight: normal; }
 
 .ledger-note { color: #ffd700; font-size: 14px; }
+
+.school-card { text-align: left; padding: 16px; }
+.school-tag { font-size: 11px; opacity: .6; }
+.captcha-tile.hint { box-shadow: 0 0 10px var(--accent); border-width: 2px; }
+.market-item { line-height: 1.7; }
 .rapid-timer { font-size: 20px; font-weight: bold; color: var(--accent); margin: 8px 0; }
 .tap-btn { font-size: 22px; padding: 18px; }
 
