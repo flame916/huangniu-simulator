@@ -36,6 +36,9 @@ body { background: var(--bg); color: var(--text); font-family: "Microsoft YaHei"
 .timing-bar { height: 14px; background: #333; border-radius: 7px; overflow: hidden; margin: 12px 0; }
 .timing-fill { height: 100%; background: var(--accent); }
 .timing-info, .rapid-info { font-size: 14px; opacity: .85; margin: 10px 0; }
+.refresh-row { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
+.btn-sm { width: auto; flex: none; margin: 0; padding: 10px 14px; font-size: 14px; background: #2a9d8f; }
+.buff-label { font-size: 13px; opacity: .85; }
 .rapid-timer { font-size: 20px; font-weight: bold; color: var(--accent); margin: 8px 0; }
 .tap-btn { font-size: 22px; padding: 18px; }
 

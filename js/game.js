@@ -78,7 +78,7 @@
       const t = D.TASKS[taskId];
       if (!t) return { success: false, luckGain: 0, leveledUp: false, newLevel: run.level };
       const rate = this.getTaskRate(run, taskId);
-      const effectiveRate = Math.min(1, rate + timingScore * 0.4);
+      const effectiveRate = Math.min(1, rate + timingScore * 0.4 + (run.refreshBuff || 0));
       const success = _rng() < effectiveRate;
       const oldLevel = run.level;
       const baseGain = success ? 50 : 20;
@@ -117,6 +117,8 @@
         run.flags[rw.unlock.slice(5)] = true;
       }
       if (!run.tasksCompleted.includes(taskId)) run.tasksCompleted.push(taskId);
+      run.refreshBuff = 0;
+      run.refreshUses = 0;
       if (t.nextTask) {
         run.currentTask = t.nextTask;
         run.taskProgress = 0;

@@ -280,6 +280,31 @@
     fill.style.width = '0%';
     barEl.appendChild(fill);
     card.appendChild(barEl);
+
+    app.run.refreshBuff = app.run.refreshBuff || 0;
+    app.run.refreshUses = app.run.refreshUses || 0;
+    const refreshRow = el('div', 'refresh-row');
+    const refreshBtn = el('button', 'btn btn-sm', '🔄 刷新货源');
+    const buffLabel = el('span', 'buff-label', `成功率加成 +${app.run.refreshBuff}%`);
+    refreshRow.appendChild(refreshBtn);
+    refreshRow.appendChild(buffLabel);
+    card.appendChild(refreshRow);
+    refreshBtn.onclick = () => {
+      app.run.refreshUses += 1;
+      const roll = Math.random();
+      if (roll < 0.55) {
+        const gain = 4 + Math.floor(Math.random() * 9);
+        app.run.refreshBuff = Math.min(32, app.run.refreshBuff + gain);
+        showToast(`🔄 刷出新货源！成功率 +${gain}%`);
+      } else if (roll < 0.8) {
+        showToast('货架空空……什么都没刷到');
+      } else {
+        showToast('📢 ' + randAd());
+      }
+      buffLabel.textContent = `成功率加成 +${app.run.refreshBuff}%`;
+      G.saveRun(app.run);
+    };
+
     const startBtn = el('button', 'btn', '开始抢购');
     card.appendChild(startBtn);
     let running = false;
@@ -296,20 +321,30 @@
     startBtn.onclick = () => {
       if (!running) {
         running = true;
-        startBtn.textContent = '抢！';
         t0 = Date.now();
         anim = setInterval(() => {
-          const p = (Date.now() - t0) / TOTAL;
-          fill.style.width = Math.min(100, p * 100) + '%';
-          if (p >= 1) { clearInterval(anim); anim = null; }
-        }, 16);
+          const left = TOTAL - (Date.now() - t0);
+          if (left <= 0) {
+            clearInterval(anim);
+            anim = null;
+            fill.style.width = '100%';
+            startBtn.textContent = '⏱ 0.0s';
+            return;
+          }
+          fill.style.width = ((TOTAL - left) / TOTAL * 100) + '%';
+          startBtn.textContent = `⏱ ${(left / 1000).toFixed(1)}s`;
+        }, 50);
         return;
       }
       const tUsed = Date.now() - t0;
       if (anim) clearInterval(anim);
       anim = null;
-      const timingScore = Math.max(0, 1 - tUsed / TOTAL);
-      const perfect = timingScore >= 0.9;
+      const netDelay = 60 + Math.floor(Math.random() * 201);
+      const effUsed = tUsed + netDelay;
+      const timingScore = Math.max(0, 1 - effUsed / TOTAL);
+      const perfect = effUsed <= 350;
+      showToast(`🌐 网络延迟 ${netDelay}ms`);
+      const usesBefore = app.run.refreshUses || 0;
       const res = G.rollPurchase(app.run, t.id, timingScore);
       G.saveRun(app.run);
       if (res.success) {
@@ -317,6 +352,7 @@
         startBtn.textContent = '✓ 抢到了！';
         const ach = G.checkAchievements(app.run, 'purchase', { perfect });
         for (const aid of ach) unlockAchievement(aid);
+        if (t.id === 'T0-1' && app.g.runCount >= 2 && usesBefore >= 5) unlockAchievement('refresh_master');
         if (res.leveledUp) showToast(`🎉 手速等级提升到 Lv.${res.newLevel}！`);
         if (t.rewards.broadcast) showBroadcast('全服广播：林小韭，又抢到了！');
         if (!isAdFree()) setTimeout(() => showToast('📢 ' + randAd()), 300);
