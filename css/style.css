@@ -97,6 +97,21 @@ body { background: var(--bg); color: var(--text); font-family: "Microsoft YaHei"
 .dark-market { background: #222 !important; border: 1px solid #888; }
 .order-card { border: 1px solid var(--accent); }
 .opp-race { color: #ff9c6b; }
+
+.ad-popup {
+  position: absolute; inset: 20px 10px auto 10px; z-index: 50;
+  background: #111; border: 2px solid var(--accent); border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.6);
+}
+.ad-head { display: flex; justify-content: space-between; align-items: center;
+  background: var(--accent); color: #111; font-weight: bold; padding: 4px 8px; }
+.ad-x { background: transparent; border: none; color: #111; font-size: 16px; cursor: pointer; }
+.ad-body { padding: 14px 10px; font-size: 14px; line-height: 1.5; }
+.tilt-banner { background: rgba(255,80,80,.12); border-radius: 8px; padding: 8px; }
+.tap-fake { opacity: .55; filter: saturate(.4); transform: scale(.97); }
+.math-grid, .dir-grid { grid-template-columns: repeat(4, 1fr); }
+.diff-btn.picked { outline: 3px solid var(--accent); }
+.scene-card { position: relative; }
 .rapid-timer { font-size: 20px; font-weight: bold; color: var(--accent); margin: 8px 0; }
 .tap-btn { font-size: 22px; padding: 18px; }
 

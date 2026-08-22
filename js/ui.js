@@ -96,11 +96,27 @@
     const wrap = el('div', 'school-screen');
     wrap.appendChild(el('h2', 'screen-h', '选择你的流派'));
     wrap.appendChild(el('p', 'title-sub', '系统：老父亲按您的天赋，定制了抢购圣手方案——'));
+    const diffRow = el('div', 'refresh-row diff-row');
+    diffRow.appendChild(el('span', 'buff-label', '难度：'));
+    let chosenDiff = app._diff || 'normal';
+    const diffBtns = [];
+    for (const [id, label] of [['casual', '🌤️ 休闲'], ['normal', '⚔️ 标准'], ['hell', '🔥 真实地狱']]) {
+      const b = el('button', 'btn btn-sm diff-btn' + (chosenDiff === id ? ' picked' : ''), label);
+      b.onclick = () => {
+        chosenDiff = id;
+        app._diff = id;
+        diffBtns.forEach(x => x.classList.remove('picked'));
+        b.classList.add('picked');
+      };
+      diffBtns.push(b);
+      diffRow.appendChild(b);
+    }
+    wrap.appendChild(diffRow);
     for (const s of D.SCHOOLS) {
       const c = el('button', 'btn school-card',
         `<b>${s.name}</b><br><span class="hire-desc">${s.desc}</span><br><span class="school-tag">适合：${s.tag}</span>`);
       c.onclick = () => {
-        app.run = G.newRun(app.g, s.id);
+        app.run = G.newRun(app.g, s.id, chosenDiff);
         app.screen = 'game';
         G.saveRun(app.run);
         render();
@@ -729,29 +745,24 @@
     };
   }
 
-  function buildCaptcha(sec, onPass, hint) {
+  function buildCaptcha(sec, onPass, hint, hard) {
     sec.innerHTML = '';
-    const chars = '韭牛票抢码黄号手速';
-    const target = chars[Math.floor(Math.random() * chars.length)];
-    const pool = chars.split('').filter(c => c !== target);
-    const tiles = [];
-    for (let i = 0; i < 6; i++) tiles.push(i < 2 ? target : pool[Math.floor(Math.random() * pool.length)]);
-    for (let i = tiles.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [tiles[i], tiles[j]] = [tiles[j], tiles[i]];
-    }
-    sec.appendChild(el('div', 'captcha-inst',
-      `🤖 人机验证：请点击所有「${target}」字<br><span class="captcha-taunt">${D.CAPTCHA_LINES[Math.floor(Math.random() * D.CAPTCHA_LINES.length)]}</span>`));
-    const gridEl = el('div', 'captcha-grid');
-    sec.appendChild(gridEl);
-    let picked = 0;
+    const typeRoll = Math.random();
+    if (typeRoll < 0.34) return buildCaptchaWord(sec, onPass, hint, hard);
+    if (typeRoll < 0.67) return buildCaptchaMath(sec, onPass, hard);
+    return buildCaptchaDir(sec, onPass, hard);
+  }
+
+  function captchaFinish(sec, onPass, ok, hint) {
     let done = false;
-    const finish = (ok) => {
+    return (ok2) => {
       if (done) return;
       done = true;
-      if (ok) {
+      if (ok2) {
         sec.innerHTML = '';
         sec.appendChild(el('div', 'captcha-inst', '✅ 验证通过，开抢！'));
+        G.clearReportFlag(app.run);
+        G.saveRun(app.run);
         onPass();
       } else {
         G.addRisk(app.run, 10);
@@ -760,23 +771,79 @@
         buildCaptcha(sec, onPass, hint);
       }
     };
+  }
+
+  function buildCaptchaWord(sec, onPass, hint, hard) {
+    sec.innerHTML = '';
+    const chars = '韭牛票抢码黄号手速';
+    const target = chars[Math.floor(Math.random() * chars.length)];
+    const pool = chars.split('').filter(c => c !== target);
+    const count = hard ? 8 : 6;
+    const need = hard ? 3 : 2;
+    const tiles = [];
+    for (let i = 0; i < count; i++) tiles.push(i < need ? target : pool[Math.floor(Math.random() * pool.length)]);
+    for (let i = tiles.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [tiles[i], tiles[j]] = [tiles[j], tiles[i]];
+    }
+    sec.appendChild(el('div', 'captcha-inst',
+      `🤖 人机验证${hard ? '(加强版)' : ''}：请点击所有「${target}」字<br><span class="captcha-taunt">${D.CAPTCHA_LINES[Math.floor(Math.random() * D.CAPTCHA_LINES.length)]}</span>`));
+    const gridEl = el('div', 'captcha-grid');
+    sec.appendChild(gridEl);
+    let picked = 0;
+    const finish = captchaFinish(sec, onPass, null, hint);
     let hinted = false;
     for (const ch of tiles) {
       const tile = el('button', 'captcha-tile' + (hint && ch === target && !hinted ? ' hint' : ''), ch);
       if (hint && ch === target && !hinted) hinted = true;
       tile.onclick = () => {
-        if (done || tile.disabled) return;
+        if (tile.disabled) return;
         if (ch === target) {
           tile.disabled = true;
           tile.classList.add('hit');
           picked += 1;
-          if (picked === 2) finish(true);
+          if (picked === need) finish(true);
         } else {
           finish(false);
         }
       };
       gridEl.appendChild(tile);
     }
+  }
+
+  function buildCaptchaMath(sec, onPass, hard) {
+    sec.innerHTML = '';
+    const a = 2 + Math.floor(Math.random() * (hard ? 17 : 8));
+    const b = 1 + Math.floor(Math.random() * 9);
+    const ans = a + b;
+    sec.appendChild(el('div', 'captcha-inst',
+      `🤖 人机验证：${a} + ${b} = ?<br><span class="captcha-taunt">验证码：小学生都会，你呢？</span>`));
+    const gridEl = el('div', 'captcha-grid math-grid');
+    sec.appendChild(gridEl);
+    const opts = new Set([ans]);
+    while (opts.size < 4) opts.add(ans + (Math.floor(Math.random() * 7) - 3) || ans + 1);
+    const finish = captchaFinish(sec, onPass);
+    [...opts].sort(() => Math.random() - 0.5).forEach(v => {
+      const t = el('button', 'captcha-tile', String(v));
+      t.onclick = () => finish(v === ans);
+      gridEl.appendChild(t);
+    });
+  }
+
+  function buildCaptchaDir(sec, onPass, hard) {
+    sec.innerHTML = '';
+    const dirs = [['←', '左'], ['→', '右'], ['↑', '上'], ['↓', '下']];
+    const pick = dirs[Math.floor(Math.random() * 4)];
+    sec.appendChild(el('div', 'captcha-inst',
+      `🤖 人机验证：请点击指向「${pick[1]}」的箭头<br><span class="captcha-taunt">验证码：路痴勿扰。</span>`));
+    const gridEl = el('div', 'captcha-grid dir-grid');
+    sec.appendChild(gridEl);
+    const finish = captchaFinish(sec, onPass);
+    dirs.sort(() => Math.random() - 0.5).forEach(d => {
+      const t = el('button', 'captcha-tile', d[0]);
+      t.onclick = () => finish(d[1] === pick[1]);
+      gridEl.appendChild(t);
+    });
   }
 
   function startPurchase(node) {
@@ -793,11 +860,12 @@
     if (t.mode === 'riskcheck') return renderRiskCheck(node, t, card);
 
     const highValue = !!(t.loot && t.loot.base >= 8000);
-    const needCaptcha = app.run.today !== 'promo' && (highValue || t.id === 'T1-2' || (app.run.risk || 0) >= 30);
+    const needCaptcha = app.run.today !== 'promo'
+      && (highValue || t.id === 'T1-2' || app.run.reportFlag || (app.run.risk || 0) >= 30);
     if (needCaptcha) {
       const sec = el('div', 'captcha-box');
       card.appendChild(sec);
-      buildCaptcha(sec, () => buildControls(card, node, t), app.run.school === 'intel');
+      buildCaptcha(sec, () => buildControls(card, node, t), app.run.school === 'intel', app.run.reportFlag);
     } else {
       buildControls(card, node, t);
     }
@@ -813,6 +881,24 @@
       card.appendChild(info);
       card.appendChild(timerEl);
       card.appendChild(tapBtn);
+      // 假按钮陷阱
+      let fakeLeft = 2;
+      const fakeTimer = setInterval(() => {
+        if (fakeLeft <= 0 || remaining <= 0) { clearInterval(fakeTimer); return; }
+        if (Math.random() < 0.25) {
+          fakeLeft -= 1;
+          const fake = el('button', 'btn tap-btn tap-fake', '🖱️ 抢!!');
+          card.appendChild(fake);
+          fake.onclick = () => {
+            const lost = G.fakeTapPenalty(app.run);
+            G.saveRun(app.run);
+            showToast(lost ? '🎫 假票窝点！进度 -1' : '假票没坑到你的进度（本来就为 0）');
+            info.textContent = `限时 ${remaining} 秒，狂点！进度 ${app.run.taskProgress}/${t.progressTarget}`;
+            fake.remove();
+          };
+          setTimeout(() => fake.remove(), 1800);
+        }
+      }, 1500);
       const interval = setInterval(() => {
         remaining--;
         timerEl.textContent = `⏱ ${remaining}s`;
@@ -825,20 +911,25 @@
       }, 1000);
       let oppInterval = null;
       let oppDone = false;
+      const isRival = t.id === 'T3-1' || app.run.difficulty === 'hell';
       if (t.id === 'T3-1') {
-        const oppBar = el('div', 'rapid-info opp-race', '对手进度 0%');
+        const oppBar = el('div', 'rapid-info opp-race', '🏃 九头鸟残部进度 0%');
         card.appendChild(oppBar);
-        const oppTotal = 6500 + Math.floor(Math.random() * 3000);
+        const enc = (app.run.rivalWins || 0);
+        const oppTotal = Math.max(4200, 7500 - enc * 900 - (app.run.difficulty === 'hell' ? 1500 : 0));
         const ot0 = Date.now();
         oppInterval = setInterval(() => {
           const pct = Math.min(100, Math.round((Date.now() - ot0) / oppTotal * 100));
-          oppBar.textContent = `对手进度 ${pct}%`;
+          oppBar.textContent = `🏃 九头鸟残部进度 ${pct}%`;
           if (pct >= 100 && !oppDone) {
             oppDone = true;
             clearInterval(oppInterval);
             clearInterval(interval);
+            clearInterval(fakeTimer);
+            const fine = G.rivalFine(app.run);
+            G.saveRun(app.run);
             tapBtn.disabled = true;
-            tapBtn.textContent = '😤 被九哥的人截胡了！点我再来';
+            tapBtn.textContent = `😤 被截胡！罚款 ¥${fine}，点我报仇`;
             tapBtn.onclick = () => startPurchase(node);
           }
         }, 120);
@@ -849,7 +940,13 @@
         info.textContent = `限时 ${remaining} 秒，狂点！进度 ${app.run.taskProgress}/${t.progressTarget}`;
         if (res.taskCompleted) {
           clearInterval(interval);
+          clearInterval(fakeTimer);
           if (oppInterval) clearInterval(oppInterval);
+          if (isRival) {
+            const wins = G.rivalWin(app.run);
+            showToast(`🏆 完胜九头鸟残部！${wins}/3`);
+            if (wins >= 3) unlockAchievement('jiehu');
+          }
           const ach = G.checkAchievements(app.run, 'purchase', {});
           for (const aid of ach) unlockAchievement(aid);
           if (t.rewards.broadcast) showBroadcast('全服广播：林小韭又又又抢到了！');
@@ -914,6 +1011,20 @@
 
     const startBtn = el('button', 'btn', '开始抢购');
     card.appendChild(startBtn);
+    // 心态爆炸横幅 + 冰美式
+    if (app.run.tilted) {
+      const tiltRow = el('div', 'refresh-row tilt-banner');
+      tiltRow.appendChild(el('span', 'buff-label', '💥 心态爆炸中！下次抢购得分减半'));
+      const coffee = el('button', 'btn btn-sm', '☕ 冰美式冷静(¥800)');
+      coffee.onclick = () => {
+        if (G.calmDown(app.run)) { showToast('☕ 冰美式下肚，你冷静下来了。'); }
+        else showToast('钱不够，继续爆炸吧。');
+        G.saveRun(app.run);
+        render();
+      };
+      tiltRow.appendChild(coffee);
+      card.appendChild(tiltRow);
+    }
     let running = false;
     let t0 = 0;
     let anim = null;
@@ -941,6 +1052,18 @@
           fill.style.width = ((TOTAL - left) / TOTAL * 100) + '%';
           startBtn.textContent = `⏱ ${(left / 1000).toFixed(1)}s`;
         }, 50);
+        // 广告弹窗干扰：概率遮挡进度条
+        const adP = Math.min(0.6, 0.3 * G.diffMul(app.run));
+        if (app.run.today !== 'promo' && !card.querySelector('.ad-popup') && Math.random() < adP) {
+          setTimeout(() => {
+            if (!running || app.screen !== 'game') return;
+            const ad = el('div', 'ad-popup',
+              `<div class="ad-head">📢 系统广告<button class="ad-x">✕</button></div><div class="ad-body">${randAd()}</div>`);
+            card.appendChild(ad);
+            ad.querySelector('.ad-x').onclick = (ev) => { ev.stopPropagation(); ad.remove(); };
+            showToast('弹窗广告挡住进度条了！快关掉！');
+          }, 200 + Math.floor(Math.random() * 500));
+        }
         return;
       }
       const tUsed = Date.now() - t0;

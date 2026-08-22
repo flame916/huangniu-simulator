@@ -22,6 +22,7 @@
       { id: 'father_love',    name: '老父亲の爱', desc: '收集全 4 套系统皮肤',            reward: '免广告模式' },
       { id: 'sacrifice_100',  name: '第100号祭品', desc: '拒绝掌刀并公开真相',            reward: '结局成就「第99号·自由」' },
       { id: 'clearheaded',    name: '人间清醒',   desc: '春运良心线：帮打工人原价抢票',   reward: '称号：人间清醒' },
+      { id: 'jiehu',          name: '截胡之王',   desc: '正面击败九头鸟残部三次',         reward: '称号：九头鸟克星' },
     ],
     ENDINGS: [
       { id: 'A',      name: '掌刀人',       title: '欢迎上任，下一任祭品已经就位。', desc: '你取代小雨成为第100号圣手培养者。系统继续陪伴，排行榜 Lv.100 点亮。' },
@@ -98,6 +99,10 @@
         options: [{ label: '交钱（-¥800）', cost: 800 }] },
       { id: 'scareLetter', title: '匿名恐吓信', desc: '门缝里塞着一张纸条，打印体："第 99 号，别抬头看月亮。"没有落款。你把纸条烧了，灰烬里有种不祥的熟悉感。', weight: 2, rarity: 'rare',
         options: [{ label: '烧掉它', cost: 0 }] },
+      { id: 'poach', title: '同行挖角', desc: '"兄弟，来我这儿，分成翻倍。"——对面开价了。你的小弟低头搓着手机，欲言又止。', weight: 4, rarity: 'uncommon',
+        options: [{ label: '放他走（失去一名小弟）', cost: 0 }, { label: '加钱召回（-¥5000）', cost: 5000 }] },
+      { id: 'bigBet', title: '限时押注大单', desc: '"圈内疯传：三天后有一批压票放出，吃下就是十倍利润——但要先押上全部身家的一半。"你盯着屏幕，心跳如鼓。梭哈，还是怂？', weight: 3, rarity: 'rare',
+        options: [{ label: '梭哈！押上一半资金！', cost: 0 }, { label: '怂了，落袋为安', cost: 0 }] },
     ],
     TASKS: {
       'T0-1': { id: 'T0-1', chapter: 'prologue', name: '抢到悬崖火锅号', goal: '0.3% 挑战中签', minigame: '秒杀时刻(教学)', baseRate: 0.003, mode: 'timing', progressTarget: 1, rewards: { luck: 100 }, loot: { name: '悬崖火锅号', base: 300 }, nextTask: 'T1-1' },

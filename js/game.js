@@ -34,8 +34,45 @@
         pendingEventId: null, chainPending: null, pendingGoodNext: false,
         giftsOwned: [], giftShop: null, collection: {}, equipmentId: 'e0',
         prediction: null,
+        difficulty: 'normal', fatigueTask: '', fatigueN: 0, tilted: false,
+        reportFlag: false, rivalWins: 0, betPending: null,
         skins: [], flags: {}, ended: null,
       };
+    },
+
+    diffMul(run) {
+      return run.difficulty === 'casual' ? 0.5 : run.difficulty === 'hell' ? 2 : 1;
+    },
+
+    fakeTapPenalty(run) {
+      const t = D.TASKS[run.currentTask];
+      if (!t) return 0;
+      const before = run.taskProgress || 0;
+      run.taskProgress = Math.max(0, before - 1);
+      return before - run.taskProgress;
+    },
+
+    calmDown(run) {
+      if ((run.money || 0) < 800) return false;
+      run.money -= 800;
+      run.tilted = false;
+      run.failStreak = 0;
+      this.logTransaction(run, '冰美式冷静费', -800);
+      return true;
+    },
+
+    clearReportFlag(run) { run.reportFlag = false; },
+
+    rivalFine(run) {
+      const fine = Math.round(1000 * this.diffMul(run));
+      run.money = Math.max(0, (run.money || 0) - fine);
+      this.logTransaction(run, '被截胡罚款', -fine);
+      return fine;
+    },
+
+    rivalWin(run) {
+      run.rivalWins = (run.rivalWins || 0) + 1;
+      return run.rivalWins;
     },
 
     logTransaction(run, desc, amount) {
@@ -179,13 +216,14 @@
       if (!raw) return null;
       try { return JSON.parse(raw); } catch (e) { return null; }
     },
-    newRun(g, school) {
+    newRun(g, school, difficulty) {
       g.runCount = (g.runCount || 0) + 1;
       g.reverseUnlocked = g.runCount >= 2;
       this.saveGlobal(g);
       const run = this.createRun();
       run.school = school || null;
       if (school === 'capital') run.money = 5000;
+      run.difficulty = difficulty || 'normal';
       run.flags.reverseUnlocked = g.reverseUnlocked;
       return run;
     },
@@ -297,10 +335,22 @@
     rollPurchase(run, taskId, timingScore) {
       const t = D.TASKS[taskId];
       if (!t) return { success: false, luckGain: 0, leveledUp: false, newLevel: run.level };
+      // 黄金窗口收窄：ch3/ch4 时序任务，得分 <0.45 视为陪跑
+      if ((run.chapter === 'ch3' || run.chapter === 'ch4') && t.mode === 'timing' && timingScore > 0 && timingScore < 0.45) {
+        timingScore = 0;
+      }
+      // 心态爆炸：连败 ≥5 后下一次得分减半（一次性）
+      let tiltedJustSet = false;
+      if (run.tilted && t.mode === 'timing') { timingScore *= 0.5; run.tilted = false; }
       const rate = this.getTaskRate(run, taskId);
       const nightBonus = this.staffCount(run, 'night') * 0.03;
       let effectiveRate = Math.min(1, rate + timingScore * 0.4 + (run.refreshBuff || 0) + nightBonus + (run.boughtBuff || 0));
       if (t.loot && t.loot.base >= 8000) effectiveRate -= 0.10;
+      // 市场疲劳：同一任务反复尝试，成功率递减
+      if (run.fatigueTask !== taskId) { run.fatigueTask = taskId; run.fatigueN = 0; }
+      const fatPenalty = Math.min(0.4, (run.fatigueN || 0) * 0.08 * this.diffMul(run));
+      effectiveRate -= fatPenalty;
+      effectiveRate = Math.max(0, effectiveRate);
       const success = _rng() < effectiveRate;
       const oldLevel = run.level;
       const baseGain = success ? 50 : 20;
@@ -308,9 +358,16 @@
       if (success) {
         run.failStreak = 0;
         run.streak = (run.streak || 0) + 1;
+        run.fatigueN = 0;
+        run.tilted = false;
       } else {
         run.failStreak += 1;
         run.streak = 0;
+        run.fatigueN = (run.fatigueN || 0) + 1;
+        if (t.mode === 'timing' && run.failStreak >= 5 && !run.tilted) {
+          run.tilted = true;
+          tiltedJustSet = true;
+        }
       }
       const streakMul = run.school === 'hand' ? 2 : 1;
       const streakBonus = success ? Math.min(run.streak, 5) * 10 * streakMul : 0;
@@ -323,7 +380,7 @@
       } else {
         this.addLuck(run, luckGain);
       }
-      return { success, luckGain, streakBonus, leveledUp: run.level > oldLevel, newLevel: run.level, rent: ap.rent || 0, banEvent: ap.banEvent || null };
+      return { success, luckGain, streakBonus, leveledUp: run.level > oldLevel, newLevel: run.level, rent: ap.rent || 0, banEvent: ap.banEvent || null, fatPenalty, tiltedJustSet, tiltedActive: !success && (run.failStreak||0) >= 5 };
     },
 
     advanceProgress(run, taskId, n) {
@@ -355,9 +412,12 @@
         run.pendingGoodNext = false;
         return '__coupon__';
       }
-      const prob = run.today === 'crackdown' ? 0.35 : 0.18;
+      const prob = (run.today === 'crackdown' ? 0.35 : 0.18) * this.diffMul(run);
       if (_rng() >= prob) return null;
-      const pool = D.EVENTS.filter(e => !(e.id === 'waterDamage' && run.school === 'people'));
+      let pool = D.EVENTS.filter(e => !(e.id === 'waterDamage' && run.school === 'people'));
+      const hasStaff = ['night', 'tech', 'talk', 'intel'].some(k => this.staffCount(run, k) > 0);
+      pool = pool.filter(e => e.id !== 'poach' || hasStaff);
+      pool = pool.filter(e => e.id !== 'bigBet' || (run.money || 0) >= 100);
       const totalW = pool.reduce((s, e) => s + e.weight, 0);
       let r = _rng() * totalW;
       for (const e of pool) {
@@ -467,6 +527,32 @@
           }
           break;
         }
+        case 'poach': {
+          const types = ['night', 'tech', 'talk', 'intel'].filter(k => this.staffCount(run, k) > 0);
+          if (opt.cost > 0) {
+            run.money = Math.max(0, (run.money || 0) - opt.cost);
+            this.logTransaction(run, '小弟召回费', -opt.cost);
+            resultText = '你拍出五张红票："谁敢挖我的兄弟！"小弟当场泪目，转头把对面群退了。';
+          } else if (types.length) {
+            const t = types[Math.floor(_rng() * types.length)];
+            run.staff[t] -= 1;
+            resultText = '他走的那天没回头。工位上还剩半杯没喝完的奶茶。';
+          } else {
+            resultText = '对面挖了半天，发现你光杆司令一个，悻悻而去。';
+          }
+          break;
+        }
+        case 'bigBet':
+          if (opt.label.includes('梭哈')) {
+            const stake = Math.max(1, Math.floor((run.money || 0) / 2));
+            run.money -= stake;
+            run.betPending = { stake, dueDay: (run.day || 1) + 3 };
+            this.logTransaction(run, '押注大单 · 押入', -stake);
+            resultText = `¥${stake} 已押上。这三天你睡觉都攥着手机，梦里全是进度条。`;
+          } else {
+            resultText = '你怂了。三天后那批票到底十倍还是血本无归？没人知道。你只知道自己睡了个好觉。';
+          }
+          break;
         default:
           if (opt.cost > 0) {
             run.money = Math.max(0, (run.money || 0) - opt.cost);
@@ -524,16 +610,41 @@
       if (run.warehouseDown > 0) run.warehouseDown -= 1;
       // 固定支出
       const costs = [];
+      // 高利贷利息：资金为负时按日滚息
+      if ((run.money || 0) < 0) {
+        const interest = Math.ceil(Math.abs(run.money) * 0.1);
+        run.money -= interest;
+        this.logTransaction(run, '高利贷利息', -interest);
+        costs.push(`高利贷利息 ¥${interest}`);
+      }
       if (run.day > 1 && (run.day - 1) % 7 === 0) {
-        const rent = run.school === 'capital' ? 1000 : 2000;
+        let invV = 0;
+        for (const it of (run.inventory || [])) invV += this.itemValue(run, it);
+        let rent = Math.max(2000, Math.round(((run.money || 0) + invV) * 0.02));
+        rent = Math.min(8000, Math.round(rent * this.diffMul(run)));
+        if (run.school === 'capital') rent = Math.round(rent / 2);
         run.money = Math.max(0, (run.money || 0) - rent);
-        this.logTransaction(run, '每周房租', -rent);
+        this.logTransaction(run, '每周房租(累进)', -rent);
         costs.push(`房租 ¥${rent}`);
       }
       if (run.day > 1 && (run.day - 1) % 3 === 0) {
-        run.money = Math.max(0, (run.money || 0) - 300);
-        this.logTransaction(run, '水电杂费', -300);
-        costs.push('杂费 ¥300');
+        const fee = Math.round(300 * this.diffMul(run));
+        run.money = Math.max(0, (run.money || 0) - fee);
+        this.logTransaction(run, '水电杂费', -fee);
+        costs.push(`杂费 ¥${fee}`);
+      }
+      // 押注大单结算
+      if (run.betPending && run.day >= run.betPending.dueDay) {
+        const stake = run.betPending.stake;
+        if (_rng() < 0.6) {
+          run.money += stake * 2;
+          this.logTransaction(run, '押注大单 · 命中', stake * 2);
+          costs.push(`大单兑现 +¥${stake * 2}`);
+        } else {
+          this.logTransaction(run, '押注大单 · 血本无归', 0);
+          costs.push('大单翻车，本金蒸发');
+        }
+        run.betPending = null;
       }
       this.giftShopReroll(run);
       run.order = null;
@@ -597,7 +708,17 @@
           banEvent = { loss };
         }
       }
-      return { taskCompleted: true, rewards: rw, rent, banEvent };
+      // 举报连锁：风控 ≥70 时任务完成后概率被恶意举报
+      let reported = false;
+      if ((run.risk || 0) >= 70 && _rng() < 0.3 * this.diffMul(run)) {
+        const fine = 1000;
+        run.money = Math.max(0, (run.money || 0) - fine);
+        this.addRisk(run, 3);
+        this.logTransaction(run, '被举报罚款', -fine);
+        run.reportFlag = true;
+        reported = true;
+      }
+      return { taskCompleted: true, rewards: rw, rent, banEvent, reported };
     },
 
     applyChoice(run, choiceId) {
