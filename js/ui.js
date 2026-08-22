@@ -220,34 +220,194 @@
     }
   }
 
+  function itemTags(it) {
+    const tags = [];
+    if (it.quality === 'good') tags.push('优质');
+    if (it.quality === 'best') tags.push('极品✨');
+    if (it.damp) tags.push('受潮');
+    if (it.fake) tags.push('疑似假货⚠️');
+    if (it.rare) tags.push('孤品💎');
+    return tags.length ? ' [' + tags.join('/') + ']' : '';
+  }
+
   function renderMarket() {
     app.el.innerHTML = '';
     const run = app.run;
     const wrap = el('div', 'market-screen');
+    wrap.appendChild(el('div', 'money-bar', `💰 <b>${fmtMoney(run.money)}</b>`));
     wrap.appendChild(el('h2', 'screen-h', `📦 行情 · 指数 ${run.marketIdx}`));
-    wrap.appendChild(el('p', 'title-sub', run.marketIdx >= 110 ? '📈 行情火热，正是出货好时机' : run.marketIdx <= 95 ? '📉 行情低迷，建议再囤囤' : '➖ 行情平稳'));
+    wrap.appendChild(el('p', 'title-sub',
+      `${phaseLabel(run)}${todayLabel(run)}`));
     if (!run.inventory.length) {
       wrap.appendChild(el('p', 'compliance-text', '货架空空，先去抢点货。'));
     }
     run.inventory.forEach((it, i) => {
       const val = G.itemValue(run, it);
       const row = el('div', 'ach-item market-item',
-        `<b>${it.name}</b>（成本 ¥${it.base}${it.held ? ` · 已持有 ${it.held} 单` : ''}）<br>现价 <b class="risk-warn">¥${val}</b>`);
+        `<b>${it.name}</b>${itemTags(it)}（成本 ¥${it.base}${it.held ? ` · 已囤 ${it.held} 天` : ''}）<br>现价 <b class="risk-warn">${fmtMoney(val)}</b>`);
       const chRow = el('div', 'refresh-row');
-      for (const [ch, label] of [['retail', '🏪 散户零售'], ['wholesale', '🏭 同行批发'], ['vip', '💼 大客户包圆']]) {
+      for (const [ch, label] of [['retail', '🏪 零售'], ['wholesale', '🏭 批发'], ['vip', '💼 包圆']]) {
         const b = el('button', 'btn btn-sm', label);
         b.onclick = () => {
+          const before = run.money;
           const r = G.sellItem(run, i, ch);
           G.saveRun(run);
-          if (r.ok) showToast(`${r.outcome} ${r.gain > 0 ? '+' : ''}¥${r.gain}`);
+          if (r.ok) showToast(`${r.outcome} ${r.gain > 0 ? '+' : ''}${fmtMoney(r.gain)}`);
+          spawnMoneyFloat(r.ok ? (run.money - before) : 0);
           render();
         };
         chRow.appendChild(b);
       }
+      if ((run.marketIdx || 100) >= 115 && !it.fake) {
+        const ab = el('button', 'btn btn-sm dark-market', '🕶️ 黑市拍卖(×1.6~2.0)');
+        ab.onclick = () => {
+          const r = G.sellAuction(run, i);
+          G.saveRun(run);
+          if (r.phished) { showToast(`🚨 钓鱼执法！货被没收，风控+${r.riskUp}`); }
+          else { showToast(`🕶️ 黑市成交！+${fmtMoney(r.gain)}`); spawnMoneyFloat(r.gain); }
+          render();
+        };
+        chRow.appendChild(ab);
+      }
+      if ((it.held || 0) >= 3) {
+        const hb = el('button', 'btn btn-sm', '📣 炒价(+15%)');
+        hb.onclick = () => {
+          const r = G.hypeItem(run, i);
+          G.saveRun(run);
+          if (r.exposed) showToast('🔥 上热搜了！被强制降价 50%，风控+6');
+          else showToast(`📣 水军到位！成本抬到 ¥${r.base}`);
+          render();
+        };
+        chRow.appendChild(hb);
+      }
       row.appendChild(chRow);
       wrap.appendChild(row);
     });
+    // 暴利订单
+    if (!app.order && run.inventory.length) {
+      const ord = G.rollProfitOrder(run);
+      if (ord) { app.order = ord; app.orderLeft = 10; }
+    }
+    if (app.order) {
+      const it = run.inventory[app.order.idx];
+      const om = el('div', 'ach-item order-card',
+        `<b>🕵️ 神秘买家</b>：想以 <b class="risk-warn">×${app.order.mul.toFixed(2)}</b> 收购你的「${it ? it.name : ''}」<br><span class="order-timer">⏱ 剩 ${app.orderLeft}s（20% 概率是骗子，接单押金 ¥1500）</span>`);
+      const obRow = el('div', 'refresh-row');
+      const acc = el('button', 'btn btn-sm', '接！');
+      acc.onclick = () => {
+        const r = G.acceptProfitOrder(run, app.order);
+        app.order = null;
+        G.saveRun(run);
+        if (r.faked) showToast(`🚨 是骗子！保证金 -${fmtMoney(r.loss)}`);
+        else { showToast(`🕵️ 订单完成！+${fmtMoney(r.gain)}`); spawnMoneyFloat(r.gain); }
+        render();
+      };
+      const rej = el('button', 'btn btn-sm', '不接');
+      rej.onclick = () => { app.order = null; render(); };
+      obRow.appendChild(acc); obRow.appendChild(rej);
+      om.appendChild(obRow);
+      wrap.appendChild(om);
+      clearInterval(app._orderTimer);
+      app._orderTimer = setInterval(() => {
+        app.orderLeft -= 1;
+        const t = document.querySelector('.order-timer');
+        if (t && app.order) t.innerHTML = `⏱ 剩 ${app.orderLeft}s（20% 概率是骗子，接单押金 ¥1500）`;
+        if (app.orderLeft <= 0) { clearInterval(app._orderTimer); app.order = null; showToast('神秘买家等不及，走了。'); render(); }
+      }, 1000);
+    }
     const back = el('button', 'btn', '返回抢购');
+    back.onclick = () => { clearInterval(app._orderTimer); app.screen = 'game'; render(); };
+    wrap.appendChild(back);
+    app.el.appendChild(wrap);
+  }
+
+  function renderShop() {
+    app.el.innerHTML = '';
+    const run = app.run;
+    const wrap = el('div', 'shop-screen');
+    wrap.appendChild(el('div', 'money-bar', `💰 <b>${fmtMoney(run.money)}</b>`));
+    wrap.appendChild(el('h2', 'screen-h', `🎁 小雨的心愿铺 · 第 ${run.day} 天`));
+    wrap.appendChild(el('p', 'title-sub', '每天随机上架 2~3 件，价格随缘。限定款可遇不可求。'));
+    if (!(run.giftShop || []).length) wrap.appendChild(el('p', 'compliance-text', '今天没有心仪的礼物上架，明天再来看看。'));
+    (run.giftShop || []).forEach(entry => {
+      const g = D.GIFTS.find(x => x.id === entry.id);
+      const owned = (run.giftsOwned || []).includes(entry.id);
+      const afford = (run.money || 0) >= entry.price;
+      const row = el('div', 'ach-item',
+        `<b>${g.name}</b>${entry.limited ? ' [限定款🔥]' : ''} — ${fmtMoney(entry.price)}${owned ? ' ✅已送出' : ''}`);
+      const b = el('button', 'btn btn-sm', owned ? '已拥有' : '买下送她');
+      b.disabled = owned || !afford;
+      b.onclick = () => {
+        const r = G.buyGift(run, entry.id);
+        G.saveRun(run);
+        if (r.ok) {
+          showBroadcast(r.limited ? `🎁 限定款「${r.name}」送出了！小雨的眼睛在发光！` : `🎁 「${r.name}」送出了`);
+          showToast(r.story.slice(0, 60), 2600);
+          if (r.allOwned) showBroadcast('💖 心愿全收集达成！称号「心意满贯」');
+        } else if (r.poor) showToast('钱不够……再去抢几单吧。');
+        render();
+      };
+      row.appendChild(b);
+      wrap.appendChild(row);
+    });
+    wrap.appendChild(el('h2', 'screen-h', '🔧 装备升级'));
+    const curIdx = D.EQUIPMENT.findIndex(e => e.id === (run.equipmentId || 'e0'));
+    D.EQUIPMENT.forEach((e, i) => {
+      if (i <= curIdx) return;
+      const afford = (run.money || 0) >= e.price;
+      const row = el('div', 'ach-item', `<b>${e.name}</b> — ${fmtMoney(e.price)}<br><span class="hire-desc">${e.desc}</span>`);
+      const b = el('button', 'btn btn-sm', '升级');
+      b.disabled = !afford;
+      b.onclick = () => {
+        run.money -= e.price;
+        run.equipmentId = e.id;
+        G.logTransaction(run, '装备升级 · ' + e.name, -e.price);
+        G.saveRun(run);
+        showToast('🔧 换上' + e.name + '！');
+        render();
+      };
+      row.appendChild(b);
+      wrap.appendChild(row);
+    });
+    const back = el('button', 'btn', '返回抢购');
+    back.onclick = () => { app.screen = 'game'; render(); };
+    wrap.appendChild(back);
+    app.el.appendChild(wrap);
+  }
+
+  function renderCollection() {
+    app.el.innerHTML = '';
+    const run = app.run;
+    const wrap = el('div', 'collection-screen');
+    wrap.appendChild(el('h2', 'screen-h', `📜 战利品图鉴 · ${Object.keys(run.collection || {}).length} 种`));
+    const names = Object.keys(run.collection || {});
+    if (!names.length) wrap.appendChild(el('p', 'compliance-text', '还没抢到过任何东西。每个黄牛的第一步，都是从零开始的。'));
+    names.forEach(n => {
+      const c = run.collection[n];
+      const rareMark = c.best === 'best' ? ' 💎极品过' : c.best === 'good' ? ' ✨优质过' : '';
+      wrap.appendChild(el('div', 'ach-item', `<b>${n}</b> ×${c.count}${rareMark}`));
+    });
+    const back = el('button', 'btn', '返回');
+    back.onclick = () => { app.screen = 'game'; render(); };
+    wrap.appendChild(back);
+    app.el.appendChild(wrap);
+  }
+
+  function renderLedger() {
+    app.el.innerHTML = '';
+    const run = app.run;
+    const wrap = el('div', 'ledger-screen');
+    wrap.appendChild(el('div', 'money-bar', `💰 <b>${fmtMoney(run.money)}</b>`));
+    wrap.appendChild(el('h2', 'screen-h', '📒 收支流水'));
+    let invValue = 0;
+    for (const it of (run.inventory || [])) invValue += G.itemValue(run, it);
+    wrap.appendChild(el('p', 'rapid-info', `现金 ${fmtMoney(run.money)} + 库存市值 ${fmtMoney(invValue)} = 总资产 ${fmtMoney(run.money + invValue)}`));
+    if (!(run.ledger || []).length) wrap.appendChild(el('p', 'compliance-text', '还没有任何收支记录。'));
+    (run.ledger || []).forEach(row => {
+      const cls = row.amount >= 0 ? 'risk-safe' : 'risk-danger';
+      wrap.appendChild(el('div', 'ach-item', `第${row.day}天 · ${row.desc} <b class="${cls}">${row.amount >= 0 ? '+' : ''}${fmtMoney(row.amount)}</b>`));
+    });
+    const back = el('button', 'btn', '返回');
     back.onclick = () => { app.screen = 'game'; render(); };
     wrap.appendChild(back);
     app.el.appendChild(wrap);
@@ -319,15 +479,87 @@
     return bar;
   }
 
+  function fmtMoney(n) { return '¥' + Math.round(n || 0).toLocaleString('en-US'); }
+
+  function spawnMoneyFloat(diff) {
+    if (!diff) return;
+    const f = el('div', 'money-float ' + (diff > 0 ? 'up' : 'down'),
+      (diff > 0 ? '+' : '-') + fmtMoney(Math.abs(diff)));
+    app.el.appendChild(f);
+    setTimeout(() => f.remove(), 1500);
+    if (diff >= 10000) {
+      const g = el('div', 'gold-flash', '💥 暴利！');
+      app.el.appendChild(g);
+      setTimeout(() => g.remove(), 1000);
+    }
+  }
+
+  function phaseLabel(run) {
+    const p = run.marketPhase;
+    const left = run.marketLeft || 0;
+    if (p === 'up') return `📈涨潮期·剩${left}天`;
+    if (p === 'down') return `📉跌潮期·剩${left}天`;
+    return `➖震荡期·剩${left}天`;
+  }
+
+  function todayLabel(run) {
+    if (run.today === 'concert') return ' · 🎤演唱会扎堆日(货价+20%)';
+    if (run.today === 'crackdown') return ' · 🚨严打日(风控×2)';
+    if (run.today === 'promo') return ' · 🎉平台大促日(免验证码)';
+    return '';
+  }
+
+  function renderEventModal() {
+    const run = app.run;
+    app.el.innerHTML = '';
+    let ev = D.EVENTS.find(e => e.id === run.pendingEventId);
+    if (!ev) {
+      if (run.pendingEventId === '__betrayal__') ev = { title: '小弟叛逃', desc: '昨天捞出来的人，今天带货跑了。', options: [{ label: '……' }] };
+      else if (run.pendingEventId === '__coupon__') ev = { title: '平台补偿', desc: '意外之财从天而降。', options: [{ label: '收下' }] };
+      else ev = { title: '今日事件', desc: '', options: [{ label: '知道了' }] };
+    }
+    const wrap = el('div', 'event-wrap');
+    const card = el('div', 'scene-card event-card');
+    card.appendChild(el('h3', 'screen-h', '📰 ' + ev.title));
+    card.appendChild(el('p', 'scene-text', ev.desc));
+    card.appendChild(el('p', 'rapid-info', `第 ${run.day} 天 · 现金 ${fmtMoney(run.money)}`));
+    ev.options.forEach((opt, i) => {
+      const b = el('button', 'btn', opt.label);
+      b.onclick = () => {
+        const res = G.applyEventOption(run, run.pendingEventId, i);
+        run.pendingEventId = null;
+        G.saveRun(run);
+        if (res.text) showToast(res.text.slice(0, 60));
+        render();
+      };
+      card.appendChild(b);
+    });
+    wrap.appendChild(card);
+    app.el.appendChild(wrap);
+  }
+
   function renderGame() {
+    const run = app.run;
+    if (run.pendingEventId) return renderEventModal();
     app.el.innerHTML = '';
     const wrap = el('div', 'game-wrap');
     const node = D.STORY[app.run.nodeId];
     wrap.appendChild(el('div', 'chapter-banner', chapterName(app.run.chapter)));
+    wrap.appendChild(el('div', 'money-bar', `💰 <b>${fmtMoney(run.money)}</b>`));
+    wrap.appendChild(el('div', 'day-line', `第 ${run.day} 天 · ${phaseLabel(run)}${todayLabel(run)}`));
     const topRow = el('div', 'refresh-row');
-    const mBtn = el('button', 'btn btn-sm', `📦 行情${app.run.inventory.length ? '(' + app.run.inventory.length + ')' : ''}`);
+    const mBtn = el('button', 'btn btn-sm', `📦 行情${run.inventory.length ? '(' + run.inventory.length + '/' + G.capacity(run) + ')' : ''}`);
     mBtn.onclick = () => { app.screen = 'market'; render(); };
     topRow.appendChild(mBtn);
+    const sBtn = el('button', 'btn btn-sm', '🎁 心愿铺');
+    sBtn.onclick = () => { app.screen = 'shop'; render(); };
+    topRow.appendChild(sBtn);
+    const cBtn = el('button', 'btn btn-sm', '📜 图鉴');
+    cBtn.onclick = () => { app.screen = 'collection'; render(); };
+    topRow.appendChild(cBtn);
+    const lBtn = el('button', 'btn btn-sm', '📒 流水');
+    lBtn.onclick = () => { app.screen = 'ledger'; render(); };
+    topRow.appendChild(lBtn);
     wrap.appendChild(topRow);
     const card = el('div', 'scene-card');
     if (node) {
@@ -393,6 +625,13 @@
     if (app.run.ended === 'B' && conscience <= -20) {
       wrap.appendChild(el('p', 'ending-desc ledger-note', '🌫️ 火锅店里人声鼎沸，你一个人吃得很快，没有人拼桌。'));
     }
+    if ((app.run.giftsOwned || []).length >= 6 && app.run.ended === 'B') {
+      wrap.appendChild(el('p', 'ending-desc ledger-note', '💖 六件心愿，一件不落。小雨把那张房产证复印件压在了火锅店的玻璃桌板下面——"店是大家的，家是我们的。"'));
+    }
+    let invValue = 0;
+    for (const it of (app.run.inventory || [])) invValue += G.itemValue(app.run, it);
+    wrap.appendChild(el('p', 'title-sub',
+      `生涯报告 · 第 ${app.run.day} 天 · 图鉴 ${Object.keys(app.run.collection || {}).length} 种 · 库存残值 ${fmtMoney(invValue)}`));
     if (app.run.ended === 'B') {
       const rank = el('div', 'rank-easter-egg', '排行榜 · 抢购圣手 Lv.100');
       wrap.appendChild(rank);
@@ -542,6 +781,8 @@
 
   function startPurchase(node) {
     const t = D.TASKS[node.taskId];
+    const chk = G.canStartPurchase(app.run, t.id);
+    if (!chk.ok) { showToast('📦 ' + chk.reason); return; }
     const card = $('.scene-card');
     card.innerHTML = '';
     card.appendChild(el('div', 'speaker', node.speaker));
@@ -551,7 +792,8 @@
     if (t.mode === 'hire') return renderHire(node, t, card);
     if (t.mode === 'riskcheck') return renderRiskCheck(node, t, card);
 
-    const needCaptcha = t.id === 'T1-2' || (app.run.risk || 0) >= 30;
+    const highValue = !!(t.loot && t.loot.base >= 8000);
+    const needCaptcha = app.run.today !== 'promo' && (highValue || t.id === 'T1-2' || (app.run.risk || 0) >= 30);
     if (needCaptcha) {
       const sec = el('div', 'captcha-box');
       card.appendChild(sec);
@@ -576,16 +818,38 @@
         timerEl.textContent = `⏱ ${remaining}s`;
         if (remaining <= 0) {
           clearInterval(interval);
+          if (oppInterval) clearInterval(oppInterval);
           tapBtn.textContent = '⏱ 超时了，点我重新开始';
           tapBtn.onclick = () => startPurchase(node);
         }
       }, 1000);
+      let oppInterval = null;
+      let oppDone = false;
+      if (t.id === 'T3-1') {
+        const oppBar = el('div', 'rapid-info opp-race', '对手进度 0%');
+        card.appendChild(oppBar);
+        const oppTotal = 6500 + Math.floor(Math.random() * 3000);
+        const ot0 = Date.now();
+        oppInterval = setInterval(() => {
+          const pct = Math.min(100, Math.round((Date.now() - ot0) / oppTotal * 100));
+          oppBar.textContent = `对手进度 ${pct}%`;
+          if (pct >= 100 && !oppDone) {
+            oppDone = true;
+            clearInterval(oppInterval);
+            clearInterval(interval);
+            tapBtn.disabled = true;
+            tapBtn.textContent = '😤 被九哥的人截胡了！点我再来';
+            tapBtn.onclick = () => startPurchase(node);
+          }
+        }, 120);
+      }
       tapBtn.onclick = () => {
         const res = G.advanceProgress(app.run, t.id, 1);
         G.saveRun(app.run);
         info.textContent = `限时 ${remaining} 秒，狂点！进度 ${app.run.taskProgress}/${t.progressTarget}`;
         if (res.taskCompleted) {
           clearInterval(interval);
+          if (oppInterval) clearInterval(oppInterval);
           const ach = G.checkAchievements(app.run, 'purchase', {});
           for (const aid of ach) unlockAchievement(aid);
           if (t.rewards.broadcast) showBroadcast('全服广播：林小韭又又又抢到了！');
@@ -616,7 +880,7 @@
     card.appendChild(refreshRow);
     let plannedDelay = null;
     if (app.run.school === 'intel') {
-      plannedDelay = 60 + Math.floor(Math.random() * 201);
+      plannedDelay = G.netDelayRoll(app.run);
       refreshRow.appendChild(el('span', 'buff-label', `📡 预计网络延迟 ~${plannedDelay}ms`));
     }
     if (app.run.school === 'capital') {
@@ -653,7 +917,7 @@
     let running = false;
     let t0 = 0;
     let anim = null;
-    const TOTAL = G.timingTotal(app.run);
+    const TOTAL = G.timingTotal(app.run, t.id);
     const resetBar = () => {
       if (anim) clearInterval(anim);
       anim = null;
@@ -682,7 +946,7 @@
       const tUsed = Date.now() - t0;
       if (anim) clearInterval(anim);
       anim = null;
-      const netDelay = plannedDelay !== null ? plannedDelay : 60 + Math.floor(Math.random() * 201);
+      const netDelay = plannedDelay !== null ? plannedDelay : G.netDelayRoll(app.run);
       const effUsed = tUsed + netDelay;
       const timingScore = Math.max(0, 1 - effUsed / TOTAL);
       const perfect = effUsed <= G.perfectThreshold(app.run);
@@ -720,16 +984,26 @@
 
   function render() {
     if (!app.el) return;
+    const prevMoney = app._lastMoney;
     syncSkins();
     applySkin();
-    if (app.screen === 'title') return renderTitle();
-    if (app.screen === 'school') return renderSchool();
-    if (app.screen === 'game') return renderGame();
-    if (app.screen === 'market') return renderMarket();
-    if (app.screen === 'endless') return renderEndless();
-    if (app.screen === 'ending') return renderEnding();
-    if (app.screen === 'achievements') return renderAchievements();
-    if (app.screen === 'compliance') return renderCompliance();
+    let done = false;
+    if (app.screen === 'title') { renderTitle(); done = true; }
+    if (app.screen === 'school') { renderSchool(); done = true; }
+    if (app.screen === 'game') { renderGame(); done = true; }
+    if (app.screen === 'market') { renderMarket(); done = true; }
+    if (app.screen === 'shop') { renderShop(); done = true; }
+    if (app.screen === 'collection') { renderCollection(); done = true; }
+    if (app.screen === 'ledger') { renderLedger(); done = true; }
+    if (app.screen === 'endless') { renderEndless(); done = true; }
+    if (app.screen === 'ending') { renderEnding(); done = true; }
+    if (app.screen === 'achievements') { renderAchievements(); done = true; }
+    if (app.screen === 'compliance') { renderCompliance(); done = true; }
+    if (!done) return;
+    if (app.run && typeof prevMoney === 'number' && app.run.money !== prevMoney) {
+      spawnMoneyFloat(app.run.money - prevMoney);
+    }
+    if (app.run) app._lastMoney = app.run.money;
   }
 
   const GameUI = {
